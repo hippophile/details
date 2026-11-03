@@ -1,0 +1,10 @@
+# your voice recordings + transcripts never go to git
+sessions/
+*.wav
+*.aiff
+*.m4a
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.playwright-cli/

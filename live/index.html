@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Greek Voice Test</title>
+<style>
+  :root { --bg:#fafafa; --card:#fff; --fg:#1a1a1a; --muted:#5f5f5f; --line:#ddd; --good:#2e9d4f; --warn:#d9a400; --bad:#d23c3c; --accent:#2f6fde; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151515; --card:#1f1f1f; --fg:#eee; --muted:#999; --line:#333; --accent:#2f6fde; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width:820px; margin:0 auto; padding:24px 16px; }
+  h1 { font-size:20px; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  label { font-size:14px; color:var(--muted); }
+  select, input[type=range] { font-size:15px; }
+  select { padding:6px 8px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  button#mic { font-size:17px; padding:12px 22px; border:0; border-radius:999px; background:var(--accent); color:#fff; cursor:pointer; min-width:170px; }
+  button#mic.on { background:var(--bad); }
+  button#mic:disabled { opacity:.5; cursor:wait; }
+  #status { color:var(--muted); font-size:14px; }
+  .meter { position:relative; height:22px; border-radius:6px; background:linear-gradient(90deg, #888 0 28%, var(--good) 28% 86%, var(--bad) 86%); opacity:.25; }
+  .meterwrap { position:relative; margin:10px 0 4px; }
+  #bar { position:absolute; left:0; top:0; height:22px; border-radius:6px; background:var(--good); width:0; transition:width .05s; }
+  #thr { position:absolute; top:-4px; width:2px; height:30px; background:var(--fg); }
+  .scale { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+  #levelText { font-weight:600; }
+  .text { min-height:90px; white-space:pre-wrap; font-size:18px; }
+  #partial { color:var(--muted); }
+  .stats { font-size:13px; color:var(--muted); margin-top:8px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .tab { font-size:14px; padding:7px 12px; border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--fg); cursor:pointer; }
+  .tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .script p { margin:0 0 8px; font-size:18px; }
+  .s1 { color:#1d6fb8; } .s2 { color:#b5521b; } .s3 { color:#7a3fb0; }
+  @media (prefers-color-scheme: dark) { .s1 { color:#6fb1ec; } .s2 { color:#f0955f; } .s3 { color:#c39af0; } }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Greek voice test</h1>
+
+  <div class="card row">
+    <div><label for="model">Model</label><br><select id="model"></select></div>
+    <div><label for="lang">Language</label><br>
+      <select id="lang"><option value="el">Ελληνικά (forced)</option><option value="">Auto-detect</option><option value="en">English</option></select></div>
+    <div><label><input type="checkbox" id="hint"> Tech vocab hint</label></div>
+    <div style="margin-left:auto"><button id="mic">🎙 Mic on</button></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div>Level: <span id="levelText">mic off</span></div>
+      <div id="status">Pick a model and press Mic on</div>
+    </div>
+    <div class="meterwrap"><div class="meter"></div><div id="bar"></div><div id="thr"></div></div>
+    <div class="scale"><span>-70 dB</span><span>too quiet</span><span>good</span><span>too loud</span><span>0 dB</span></div>
+    <div class="row" style="margin-top:10px">
+      <label for="threshold">Silence line (below = the software treats it as silence):</label>
+      <input type="range" id="threshold" min="-65" max="-20" value="-45"><span id="thrVal">-45 dB</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Live</h2>
+    <div class="text"><span id="live"></span> <span id="partial"></span></div>
+    <div class="stats" id="liveStats"></div>
+  </div>
+
+  <div class="card">
+    <h2>What you said (full pass after you stop)</h2>
+    <div class="text" id="final"></div>
+    <div class="stats" id="finalStats"></div>
+  </div>
+
+  <div class="card">
+    <h2>Test scripts — read out loud, change your voice per person</h2>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="t1" role="tab">Daily standup · 2 people · ≈30 s</button>
+      <button class="tab" data-tab="t2" role="tab">Bank BPMN review · 3 people · ≈1 min</button>
+      <button class="tab" data-tab="t3" role="tab">AI plan with management · 3 people · ≈1.5 min</button>
+    </div>
+    <div class="script" id="t1">
+      <p><b class="s1">Ελένη:</b> Καλημέρα. Λοιπόν, γρήγορο standup. Τι έκανες χθες;</p>
+      <p><b class="s2">Νίκος:</b> Εεε, τελείωσα το migration στην PostgreSQL και έφτιαξα ένα bug στο Blazor dashboard, δηλαδή τα KPIs δεν έκαναν refresh.</p>
+      <p><b class="s1">Ελένη:</b> Οκ. Και σήμερα;</p>
+      <p><b class="s2">Νίκος:</b> Ανοίγω pull request και, ας πούμε, το μεσημέρι κάνω deploy στο VM.</p>
+      <p><b class="s1">Ελένη:</b> Τέλεια. Έχεις κάποιο blocker;</p>
+      <p><b class="s2">Νίκος:</b> Όχι, basically όλα καλά.</p>
+    </div>
+    <div class="script" id="t2" hidden>
+      <p><b class="s1">Δημήτρης:</b> Λοιπόν, πού είμαστε με το BPMN για τα στεγαστικά δάνεια;</p>
+      <p><b class="s2">Μαρία:</b> Εμμ, έχουμε το process με τρία swimlanes: πελάτης, κατάστημα και credit risk.</p>
+      <p><b class="s3">Mark (EN):</b> Yes, and the extraction from the PDFs gets the gateways right, except for the exceptions.</p>
+      <p><b class="s1">Δημήτρης:</b> Δηλαδή χρειαζόμαστε rules για τα exceptions;</p>
+      <p><b class="s2">Μαρία:</b> Ακριβώς. Για παράδειγμα, αν το δάνειο είναι πάνω από 200.000 ευρώ, πάει υποχρεωτικά για έγκριση στο credit committee.</p>
+      <p><b class="s3">Mark (EN):</b> Uhm, I already have that as a business rule, but, you know, the validation fails when the end event is missing.</p>
+      <p><b class="s1">Δημήτρης:</b> Οκ. Και πόσα processes έχουμε περάσει συνολικά;</p>
+      <p><b class="s3">Mark (EN):</b> About 45 out of 60. The rest have, like, really complex subprocesses.</p>
+      <p><b class="s2">Μαρία:</b> Θα στείλω ένα Excel με όλους τους κανόνες μέχρι την Παρασκευή.</p>
+      <p><b class="s3">Mark (EN):</b> Perfect, then I'll put it in the next sprint.</p>
+    </div>
+    <div class="script" id="t3" hidden>
+      <p><b class="s1">Γιάννης:</b> Λοιπόν, θέλω να καταλάβω, πόσο θα μας κοστίσει το AI agent για τα emails;</p>
+      <p><b class="s2">Άννα:</b> Εεε, αν τρέχει τοπικά με το Gemma, σχεδόν μηδέν. Μόνο το hardware, ένα MacBook ή ένας server.</p>
+      <p><b class="s3">Σοφία:</b> Και το GDPR; Τα δεδομένα των πελατών δεν πρέπει να πάνε στο cloud.</p>
+      <p><b class="s2">Άννα:</b> Ακριβώς, γι' αυτό on-prem. Το n8n κάνει το triage και το agent γράφει draft απαντήσεις, αλλά δεν στέλνει τίποτα μόνο του.</p>
+      <p><b class="s1">Γιάννης:</b> Δηλαδή πάντα το βλέπει άνθρωπος πριν φύγει;</p>
+      <p><b class="s2">Άννα:</b> Ναι, human in the loop. Αυτό ζητάει και το AI Act για τέτοια use cases.</p>
+      <p><b class="s3">Σοφία:</b> Εμμ, και τι γίνεται αν πέσει ο server; Έχουμε backup και monitoring;</p>
+      <p><b class="s2">Άννα:</b> Θα το βάλουμε σε Docker με health checks, και αν πέσει, τα emails απλώς περιμένουν στο inbox.</p>
+      <p><b class="s1">Γιάννης:</b> Οκ. Πόσο χρόνο γλιτώνουμε, ρεαλιστικά;</p>
+      <p><b class="s2">Άννα:</b> Basically, στο pilot είδαμε περίπου 6 ώρες την εβδομάδα ανά άτομο, με accuracy γύρω στο 85 τοις εκατό.</p>
+      <p><b class="s3">Σοφία:</b> Και ποιος έχει το ownership όταν το agent κάνει λάθος;</p>
+      <p><b class="s1">Γιάννης:</b> Καλή ερώτηση. Θέλω ένα governance document και ένα demo μέχρι το τέλος του μήνα, και μετά αποφασίζουμε για rollout σε όλη την ομάδα.</p>
+      <p><b class="s2">Άννα:</b> Τέλεια, το αναλαμβάνω.</p>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const MIN_DB = -70;
+let ws, ctx, stream, ready = false, pending = [], level = MIN_DB, recording = false;
+
+fetch('/models').then(r => r.json()).then(ms => {
+  for (const m of ms) {
+    const name = m.split('/')[1].replace('whisper-', '').replace('-mlx', '');
+    $('model').add(new Option(name.includes('turbo') ? `Whisper turbo — fast (1.6 GB)` : name === 'large-v3' ? `Whisper large — accurate, ~3× slower (3 GB)` : name, m));
+  }
+  const turbo = ms.find(m => m.includes('turbo')); if (turbo) $('model').value = turbo;
+  if (!ms.length) $('status').textContent = 'No Whisper model downloaded';
+});
+
+const pos = db => Math.max(0, Math.min(100, (db - MIN_DB) / -MIN_DB * 100));
+function placeThreshold() { $('thr').style.left = pos(+$('threshold').value) + '%'; $('thrVal').textContent = $('threshold').value + ' dB'; }
+$('threshold').oninput = () => { placeThreshold(); if (ws && ws.readyState === 1) ws.send(JSON.stringify({ threshold: +$('threshold').value })); };
+placeThreshold();
+
+// Audio capture: resample to 16 kHz mono in an AudioWorklet, 100 ms per message, plus RMS/peak for the meter.
+const WORKLET = `
+class Cap extends AudioWorkletProcessor {
+  constructor() { super(); this.ratio = sampleRate / 16000; this.t = 0; this.prev = 0; this.out = []; }
+  process(inputs) {
+    const ch = inputs[0][0]; if (!ch) return true;
+    const n = ch.length; let t = this.t;
+    while (t <= n - 1) { const i = Math.floor(t), f = t - i, a = i < 0 ? this.prev : ch[i], b = ch[Math.min(i + 1, n - 1)];
+      this.out.push(a + (b - a) * f); t += this.ratio; }
+    this.t = t - n; this.prev = ch[n - 1];
+    if (this.out.length >= 1600) { const x = Float32Array.from(this.out); this.out = [];
+      let s = 0, p = 0; for (const v of x) { s += v * v; p = Math.max(p, Math.abs(v)); }
+      this.port.postMessage({ x, rms: 10 * Math.log10(s / x.length + 1e-12), peak: 20 * Math.log10(p + 1e-9) }, [x.buffer]); }
+    return true;
+  }
+}
+registerProcessor('cap', Cap);`;
+
+function onAudio({ x, rms, peak }) {
+  level = rms > level ? rms : level * 0.7 + rms * 0.3;
+  const thr = +$('threshold').value;
+  $('bar').style.width = pos(level) + '%';
+  $('bar').style.background = peak > -1 ? 'var(--bad)' : level > thr ? 'var(--good)' : '#888';
+  $('levelText').textContent = `${level.toFixed(0)} dB — ` + (peak > -1 ? 'clipping, move back' : level < thr ? 'silence (ignored)'
+    : level < -40 ? 'speech, but quiet' : level > -8 ? 'too loud' : 'good');
+  const pcm = new Int16Array(x.length);
+  for (let i = 0; i < x.length; i++) pcm[i] = Math.max(-1, Math.min(1, x[i])) * 32767;
+  if (ready && ws.readyState === 1) ws.send(pcm.buffer); else pending.push(pcm.buffer);
+}
+
+async function start() {
+  $('live').textContent = ''; $('partial').textContent = ''; $('final').textContent = '';
+  $('liveStats').textContent = ''; $('finalStats').textContent = ''; ready = false; pending = [];
+  stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  ws = new WebSocket(`ws://${location.host}/ws`); ws.binaryType = 'arraybuffer';
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'start', model: $('model').value, lang: $('lang').value, hint: $('hint').checked, threshold: +$('threshold').value }));
+  ws.onmessage = e => onMessage(JSON.parse(e.data));
+  ws.onclose = () => { if (recording) { $('status').textContent = 'Server disconnected'; stopAudio(); setButton(false); } };
+  ctx = new AudioContext();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' })));
+  const node = new AudioWorkletNode(ctx, 'cap');
+  node.port.onmessage = e => onAudio(e.data);
+  ctx.createMediaStreamSource(stream).connect(node); node.connect(ctx.destination);  // node outputs silence
+  recording = true; setButton(true);
+}
+
+function stopAudio() { stream && stream.getTracks().forEach(t => t.stop()); ctx && ctx.close(); level = MIN_DB; $('bar').style.width = '0'; $('levelText').textContent = 'mic off'; }
+
+function stop() {
+  recording = false; stopAudio();
+  for (const b of pending) ws.send(b); pending = [];
+  ws.send(JSON.stringify({ type: 'stop' }));
+  $('mic').disabled = true; $('mic').textContent = 'Finishing…';
+}
+
+function onMessage(m) {
+  if (m.type === 'status') $('status').textContent = m.text;
+  if (m.type === 'ready') { ready = true; $('status').textContent = m.text; for (const b of pending) ws.send(b); pending = []; }
+  if (m.type === 'partial') { $('partial').textContent = m.text; }
+  if (m.type === 'commit' && m.text) { $('live').textContent += ($('live').textContent ? ' ' : '') + m.text; $('partial').textContent = ''; }
+  if (m.type === 'partial' || m.type === 'commit') $('liveStats').textContent = `last update: model took ${m.secs}s for ${m.audio}s of speech`;
+  if (m.type === 'final') {
+    $('final').textContent = m.text || '(nothing heard)';
+    $('finalStats').textContent = m.audio ? `${m.audio}s of audio, full pass took ${m.secs}s · saved ${m.file}` : '';
+    $('status').textContent = 'Done. Press Mic on to start a new take';
+    ws.close(); setButton(false);
+  }
+}
+
+function setButton(on) { const b = $('mic'); b.disabled = false; b.classList.toggle('on', on); b.textContent = on ? '■ Stop' : '🎙 Mic on';
+  for (const id of ['model', 'lang', 'hint']) $(id).disabled = on; }
+
+for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.script').forEach(p => p.hidden = p.id !== t.dataset.tab);
+};
+
+$('mic').onclick =() => recording ? stop() : start().catch(err => { $('status').textContent = 'Mic error: ' + err.message; stopAudio(); setButton(false); });
+</script>
+</body>
+</html>
