@@ -1,28 +1,29 @@
-"""Live Greek speech-to-text test page.  Run:  make run   then open http://localhost:8765
+"""Live Greek speech-to-text test page (v1), now served at /live.  Run:  make run   then open http://localhost:8765/live
 Browser sends 16 kHz mono PCM over a WebSocket; server re-transcribes the current sentence ~every second (grey
 "live" text), commits it when you pause, and on Stop runs one full pass over the whole take (best quality).
 Each take is saved to sessions/<time>.wav + .txt so `make score` can score it against the script."""
-import asyncio, concurrent.futures, datetime, importlib, json, os, pathlib, sys, time, wave
+import asyncio, concurrent.futures, datetime, importlib, json, pathlib, sys, time, wave
 import numpy as np
 from aiohttp import web
 
-HERE = pathlib.Path(__file__).parent
-sys.path.insert(0, str(HERE.parent / "eval"))
+REPO = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO / "eval"))
 from score import PROMPT  # same vocabulary hint as the scorer
 
 SR = 16000
-PORT = int(os.environ.get("PORT", "8765"))
-HUB = pathlib.Path(os.environ.get("HF_HOME", "~/.cache/huggingface")).expanduser() / "hub"
-SESSIONS = HERE.parent / "sessions"
+SESSIONS = REPO / "sessions"
 JUNK = ("υπότιτλοι", "υποτιτλοι", "authorwave", "subtitles")   # known Whisper hallucinations on silence
 GPU = concurrent.futures.ThreadPoolExecutor(max_workers=1)      # one model call at a time
-mlxw = importlib.import_module("mlx_whisper.transcribe")
 
 
-def models():
+def _mlxw():
+    return importlib.import_module("mlx_whisper.transcribe")  # lazy: tests need no models
+
+
+def models(hub):
     """Whisper MLX models already downloaded on this Mac."""
     out = []
-    for d in sorted(HUB.glob("models--mlx-community--whisper-*")):
+    for d in sorted(hub.glob("models--mlx-community--whisper-*")):
         if any((d / "snapshots").glob("*/weights.*")):
             out.append("mlx-community/" + d.name.split("--", 2)[2])
     return out
@@ -30,7 +31,7 @@ def models():
 
 def transcribe(audio, repo, lang, hint):
     t = time.time()
-    r = mlxw.transcribe(audio, path_or_hf_repo=repo, language=lang or None, condition_on_previous_text=False,
+    r = _mlxw().transcribe(audio, path_or_hf_repo=repo, language=lang or None, condition_on_previous_text=False,
                         initial_prompt=PROMPT if hint else None, temperature=0.0 if len(audio) < SR * 30 else
                         (0.0, 0.2, 0.4), hallucination_silence_threshold=2.0 if len(audio) > SR * 30 else None)
     text = r["text"].strip()
@@ -107,7 +108,7 @@ class Session:
             w.writeframes((np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes())
         pathlib.Path(str(stem) + ".txt").write_text(text)
         await self.send(type="final", text=text, secs=round(secs, 1), audio=round(len(x) / SR, 1),
-                        file=str(stem.relative_to(HERE.parent)) + ".wav")
+                        file=str(stem.relative_to(REPO)) + ".wav")
 
 
 async def ws_handler(request):
@@ -125,7 +126,7 @@ async def ws_handler(request):
                 await s.send(type="status", text=f"Loading {s.cfg['model'].split('/')[-1]}…")
                 t = time.time()
                 await asyncio.get_running_loop().run_in_executor(
-                    GPU, mlxw.ModelHolder.get_model, s.cfg["model"], importlib.import_module("mlx.core").float16)
+                    GPU, _mlxw().ModelHolder.get_model, s.cfg["model"], importlib.import_module("mlx.core").float16)
                 s.chunks, s.n, s.recording = [], 0, True
                 await s.send(type="ready", text=f"Listening (model ready in {time.time() - t:.1f}s)")
                 task = asyncio.create_task(s.live_loop())
@@ -138,17 +139,11 @@ async def ws_handler(request):
     return ws
 
 
-async def index(_):
-    return web.FileResponse(HERE / "index.html")
+def add_live_routes(app, settings):
+    async def index(_):
+        return web.FileResponse(REPO / "web" / "live-v1" / "index.html")
 
+    async def list_models(_):
+        return web.json_response(models(settings.paths.hf_hub))
 
-async def list_models(_):
-    return web.json_response(models())
-
-
-app = web.Application()
-app.add_routes([web.get("/", index), web.get("/models", list_models), web.get("/ws", ws_handler)])
-
-if __name__ == "__main__":
-    print(f"open http://localhost:{PORT}   models: {models()}")
-    web.run_app(app, host="127.0.0.1", port=PORT, print=None)
+    app.add_routes([web.get("/live", index), web.get("/models", list_models), web.get("/ws", ws_handler)])

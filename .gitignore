@@ -11,3 +11,9 @@ __pycache__/
 
 # local secrets
 .env
+*.flac
+*.mp4
+*.mov
+*.opus
+*.webm
+*.mp3

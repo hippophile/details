@@ -4,3 +4,4 @@ aiohttp
 numpy
 huggingface_hub
 pytest
+psycopg[binary,pool]

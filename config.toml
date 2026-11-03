@@ -1,0 +1,16 @@
+# Defaults only, no secrets. Override with DETAILS_<SECTION>_<KEY> env vars or .env (git-ignored).
+[server]
+port = 8765                       # PORT is accepted as an alias
+
+[paths]
+data_dir = "~/details-data"
+hf_hub = "~/.cache/huggingface/hub"   # HF_HOME/hub wins when HF_HOME is set
+
+[lmstudio]
+url = "http://localhost:1234"
+cli = "~/.lmstudio/bin/lms"
+
+[db]                              # url / url_test come from DATABASE_URL / DATABASE_URL_TEST
+url = ""
+url_test = ""
+connect_timeout = 5

@@ -28,7 +28,7 @@ We went with **detAIls**, because the devil is in them, and now so is the AI.
 
 ```bash
 make setup     # once: ffmpeg, Python 3.12 venv, packages, Whisper models (~4.6 GB)
-make run       # open http://localhost:8765 → pick a model → 🎙 Mic on
+make run       # open http://localhost:8765/live → pick a model → 🎙 Mic on
 make test      # scorer tests
 ```
 To score a take against the long script: `make record`, then `make score`. Takes saved from the page live in `sessions/`: `make score AUDIO=sessions/<file>.wav`.
