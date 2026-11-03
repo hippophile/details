@@ -1,0 +1,39 @@
+# v2-foundation
+
+## Driver
+"Keep aiohttp. One process, small JSON API." and "`/live` keeps working until Record has live text. Nothing you're happy with breaks." (DESIGN.md §3). User decisions: data in `DETAILS_DATA_DIR` (default `~/details-data`), PostgreSQL from `DATABASE_URL` / `DATABASE_URL_TEST` in git-ignored `.env`, psycopg 3, plain `.sql` migrations, no ORM.
+
+## Depends on
+Nothing (first change). Every later change depends on this one.
+
+## Measured blast radius (2026-11-03)
+- Existing files touched: `Makefile` (23 lines), `requirements.txt` (6 lines), `.gitignore` (+6 patterns), `live/server.py` (154 lines, moved), `live/index.html` (222 lines, moved unchanged), `tests/test_score.py` (untouched, must stay green). `README.md` references `make run` (1 line updated).
+- Created: `src/details/{__init__,settings,app,db,migrate,security}.py`, `src/details/api/live_v1.py`, `config.toml`, `db/migrations/0001_schema_migration.sql`, `web/live-v1/index.html`, `web/shared/{shared.css,nav.js}`, `tests/{conftest.py,test_settings.py,test_app.py,test_migrate.py,test_shared_web.py}`, `pytest.ini`, `.env.example`.
+- Not touched: `eval/` (v1 `score.py` imported by live code keeps its path).
+
+## Decision
+1. **Package** `src/details/` with the shared-contract layout (`settings.py, app.py, db.py, api/, services/, runner/, engines/, llm/, store/`; empty sub-packages get `__init__.py` only). Installed by `PYTHONPATH=src` via `pytest.ini` (`pythonpath = src`) and `make run` (`python -m details`). No `pyproject.toml` in this change.
+2. **Settings** (`settings.py`): frozen dataclass loaded once. Layers, later wins: defaults in `config.toml` (repo, no secrets) < `DETAILS_*` env vars. `tomllib` (stdlib, Python 3.12) so no `tomli`. `.env` (git-ignored) is parsed by a ~15-line loader into the process env **without overriding** variables already set; it supplies `DATABASE_URL` / `DATABASE_URL_TEST` and any `DETAILS_*`. Settings are **nested sections**: `settings.<section>.<key>` from `config.toml` `[section]`; the env override is `DETAILS_<SECTION>_<KEY>` (e.g. `DETAILS_LMSTUDIO_URL` -> `settings.lmstudio.url`), each section with a validation hook run at load. Initial sections: `[server]` (`port` default 8765, `PORT` kept as alias), `[paths]` (`data_dir` default `~/details-data`, `~` expanded), `[lmstudio]` (`url`, `cli` = path to the `lms` binary), `[db]` (`url`, `url_test` from `DATABASE_URL` / `DATABASE_URL_TEST`). There is no `[llm] url`. DSNs and `.env` values are never logged or put in error messages. Missing `DATABASE_URL` is an error only when the DB is used (not at import).
+3. **`create_app(settings) -> web.Application`** (`app.py`): stores `settings` under an app key, registers `/api/health`, static `web/shared/` at `/shared/`, and the v1 routes. Binds 127.0.0.1 only. Startup order (`on_startup` hooks, fixed): open pool, **migration check**, then registered hooks in order (recovery, seed sync, purge, prompt sync, runner start; later changes append to this list, foundation ships the empty ordered list). If migrations are pending the app fails with "database not migrated: run `make migrate`". If `DATABASE_URL` is unset, DB hooks are skipped and the app still serves static pages and `/api/health` (with `db: false`). `python -m details` runs it and prints resolved port, data dir, DB reachable yes/no.
+4. **v1 live page kept at `/live`**: `live/server.py` logic moved to `src/details/api/live_v1.py` as `add_live_routes(app, settings)`; `live/index.html` moved unchanged to `web/live-v1/index.html`. Routes: `GET /live` (page), and the v1 URLs `GET /models` and `GET /ws` stay at root because the unchanged page fetches `/models` and opens `/ws`. Behaviour edits allowed: only imports, `Settings` for port/sessions path, and the lazy `mlx_whisper` import (so tests need no models). `live/server.py` is deleted (moved); v1 is tagged `v1.0` by the user, not here.
+5. **`db.py`**: `psycopg_pool.AsyncConnectionPool` everywhere in the server (opened in app startup, closed on cleanup, `row_factory=dict_row`); no sync DB calls on the event loop. The migration CLI and tests may use a plain sync `connect(url)`. No ORM.
+6. **Migrations** (`migrate.py`): `migrate(conn, dir)` applies `db/migrations/NNNN_name.sql` in order, each in one transaction, records `(version int pk, name, applied_at)` in `schema_migration`. First run creates `schema_migration` itself via `0001_schema_migration.sql` (`CREATE TABLE IF NOT EXISTS`). Already-applied files are skipped; a changed applied file (sha256 stored in column `sha256`) is an error. CLI: `python -m details.migrate`.
+7. **Test DB fixture** (`tests/conftest.py`): session fixture `db_url` reads `DATABASE_URL_TEST` (from env or `.env`); if unset, DB tests are **skipped with a reason**. Per test run it executes `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` on the test DB, then migrates; a function-level autouse-for-DB-tests fixture `clean_db` runs `TRUNCATE` on every table except `schema_migration` with `RESTART IDENTITY CASCADE` before each test. Safety guard: refuses to reset if the URL database name does not end in `_test`.
+8. **Makefile verbs**: `setup` (existing + install new requirements), `run` (`python -m details`), `test` (`pytest -q`, excludes `-m gpu`), `migrate` (`python -m details.migrate`). `record` and `score` unchanged.
+9. **requirements.txt**: add `psycopg[binary,pool]`. No `tomli`.
+10a. **Page routes**: `/record`, `/library`, `/analyse` serve `web/<x>/index.html`, assets under `/<x>/`; shared files under `/shared/`. No `*.html` URLs; links are `/analyse?rec=<id>` and `/library`. Until later changes ship the pages, a missing `web/<x>/index.html` returns 404 (the route is registered; the test uses a stub file in a temp web dir).
+10b. **Security middleware**: rejects a non-localhost `Host` header (allowed: `localhost`, `127.0.0.1`, `[::1]`, with port) with 403, and rejects a present `Origin` that does not match the request host on POST/PATCH/DELETE and on WebSocket upgrades with 403. Applies to `/live` WS too.
+10c. **Never log secrets**: connection errors are re-raised with the DSN password redacted.
+10d. **.gitignore** adds `*.flac`, `*.mp4`, `*.mov`, `*.opus`, `*.webm`, `*.mp3` (existing: `*.wav *.aiff *.m4a .env sessions/`).
+10. **Shared web shell** `web/shared/shared.css` + `nav.js`: v1 tokens (`--bg --card --fg --muted --line --good --warn --bad --accent`, light/dark via `prefers-color-scheme`, `.card`, `.tab`, pill buttons, max-width 820px) and a nav bar `Record | Library | Analyse` (links `/record`, `/library`, `/analyse`), current page highlighted, injected into `<nav id="nav">` by `nav.js`. Per designer.md. The v1 `/live` page does NOT use it.
+
+## Verification
+- `pytest -q` green with no GPU, no models; `tests/test_score.py` still green.
+- Negative: foreign `Host` -> 403; cross-origin POST and WS upgrade -> 403; a bad `DATABASE_URL` error text does not contain the password; pending migration -> "run make migrate" error; bad TOML raises a clear error naming the file; reset refuses a DB not ending `_test`; a tampered applied migration is rejected; `/live` page body is byte-identical to the v1 `index.html`.
+- Manual: `make migrate && make run`, `curl /api/health`, open `/live` and see the v1 page, screenshot of a stub page showing the nav.
+
+## Caveats
+- Moving v1 code is the riskiest part: its WebSocket behaviour is only covered by a smoke test (route registered, `/models` returns JSON from a fake HF dir), not a live transcription (needs GPU, run by hand once).
+- `/record`, `/library`, `/analyse` links 404 until later changes ship those pages; the nav is only demoed on a stub test page.
+- `DATABASE_URL_TEST` resets the public schema on every run: it must never point at `details`.
+- `~/details-data` is created on first run only if missing.

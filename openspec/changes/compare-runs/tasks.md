@@ -1,0 +1,10 @@
+# Tasks: compare-runs (test-first)
+
+- [ ] 1. Write failing tests: migration 0006 (cascade, unique `eval_result` key, side PK); `POST /api/comparisons` validations; `GET /api/comparisons?recording_id=` list; orphan cleanup when a run is deleted (comparison with <2 items removed); async pool + `clean_db`; header payload; `output_counts` table; warning present/absent cases; `tests/test_scoring_parity.py` (`score_run` vs `eval/score.py` on the real script, 3 hypotheses); eval stored once; no-script and no-lines give `eval:null`; `tests/js/diff.test.mjs` (small cases, rebuild round-trip, Greek accents, synthetic ~10k-word pair under 10 s with ≥10 progress batches, no-anchor coarse case, if node is missing, print a visible `SKIP: node not found` line in `make test`); page tests (tick limit, button state, element ids). Run `pytest -m "not gpu"` and `node --test tests/js`, **observe failures**, keep output.
+- [ ] 2. Add `db/migrations/0006_compare_runs.sql`; migration tests green.
+- [ ] 3. Add `services/scoring.py` (importlib load of `eval/score.py`, `score_run`); parity tests green; confirm `tests/test_score.py` still green and `eval/score.py` is unchanged.
+- [ ] 4. Add `services/comparison.py` (create, list, header, counts, warnings, eval, `prune_orphans` called from the STT-run delete path) and `api/comparisons.py`; wire in `app.py`; API tests green.
+- [ ] 5. Add `web/analyse/diff.js` and `diff-worker.js`; JS tests green.
+- [ ] 6. Add `compare.js`/`compare.css` and the runs-list ticks + compare mount in `web/analyse/index.html`/`analyse.js`; page tests green.
+- [ ] 7. Full suite green: `pytest -m "not gpu"` + `node --test tests/js`; `openspec validate compare-runs --strict`.
+- [ ] 8. Manual check: create a comparison via curl, open the compare view at `/analyse?rec=<id>&compare=<cid>`, screenshot desktop and phone width (diff, counts, warning, WER table); load a ~1-hour transcript pair in Brave and confirm the tab stays responsive during "Comparing…"; note the measured diff time.
