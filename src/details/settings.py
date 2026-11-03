@@ -50,12 +50,24 @@ class Record:
 
 
 @dataclass(frozen=True)
+class Trash:
+    days: int
+
+
+@dataclass(frozen=True)
+class Import:
+    max_mb: int
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
     lmstudio: LmStudio
     db: Db
     record: Record
+    trash: Trash
+    import_: Import   # config section [import]; trailing underscore because `import` is a keyword
 
 
 def _v_server(s):
@@ -95,10 +107,20 @@ def _v_record(s):
         raise ValueError("record.tz: unknown time zone") from None
 
 
+def _v_trash(s):
+    if s.days < 1:
+        raise ValueError("trash.days: must be >= 1")
+
+
+def _v_import(s):
+    if s.max_mb <= 0:
+        raise ValueError("import.max_mb: must be > 0")
+
+
 # section name -> (dataclass, validation hook). Later changes add a section here + a [section] in config.toml.
 SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
             "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
-            "record": (Record, _v_record)}
+            "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import)}
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],
@@ -181,5 +203,5 @@ def load_settings(config_path=CONFIG_PATH, env=None, dotenv_path=DOTENV_PATH):
             validate(section)
         except ValueError as e:
             raise SettingsError(str(e)) from None
-        built[name] = section
+        built["import_" if name == "import" else name] = section
     return Settings(**built)

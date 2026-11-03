@@ -49,9 +49,17 @@ def truncate_all(conn):
         conn.execute(f"TRUNCATE {names} RESTART IDENTITY CASCADE")
 
 
+class _SecretDSN(str):
+    """A DSN that works as a str but never shows its password in repr (pytest prints fixture values)."""
+    def __repr__(self):
+        import re
+        return repr(re.sub(r"(://[^:/@]+:)[^@]*@", r"\1***@", str(self)))
+
+
 def _test_url():
     import os
-    return os.environ.get("DATABASE_URL_TEST") or read_dotenv(REPO_ROOT / ".env").get("DATABASE_URL_TEST")
+    url = os.environ.get("DATABASE_URL_TEST") or read_dotenv(REPO_ROOT / ".env").get("DATABASE_URL_TEST")
+    return _SecretDSN(url) if url else url
 
 
 @pytest.fixture(scope="session")

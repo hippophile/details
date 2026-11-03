@@ -1,5 +1,5 @@
 """Application factory. Startup order is fixed: open pool, migration check, then registered hooks in order."""
-import pathlib
+import asyncio, pathlib
 
 from aiohttp import web
 
@@ -7,16 +7,18 @@ from psycopg_pool import AsyncConnectionPool
 
 from .api.live_v1 import add_live_routes
 from .api.record import add_record_routes
+from .api.recordings import add_recordings_routes
 from .db import open_pool
 from .migrate import MIGRATIONS_DIR, check_pending
 from .security import local_only
-from .services import recordings, scripts
+from .services import recordings, scripts, trash
 from .settings import REPO_ROOT, Settings
 
 BIND_HOST = "127.0.0.1"
 PAGES = ("record", "library", "analyse")
 SETTINGS = web.AppKey("settings", Settings)
 POOL = web.AppKey("pool", AsyncConnectionPool)
+PURGE_TASK = web.AppKey("purge_task", asyncio.Task)
 
 
 def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=()):
@@ -46,6 +48,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         app.router.add_static("/shared/", web_dir / "shared")
     add_live_routes(app, settings)
     add_record_routes(app, settings, POOL)
+    add_recordings_routes(app, settings, POOL)
 
     async def recover_hook(app):
         await recordings.recover_all(app[POOL], settings)
@@ -53,7 +56,11 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     async def seed_hook(app):
         await scripts.sync_scripts(app[POOL])
 
-    hooks = (recover_hook, seed_hook, *hooks)
+    async def purge_hook(app):
+        await trash.purge(app[POOL], settings)
+        app[PURGE_TASK] = asyncio.create_task(trash.purge_loop(app[POOL], settings))
+
+    hooks = (recover_hook, seed_hook, purge_hook, *hooks)
 
     async def startup(app):
         if not settings.db.url:
@@ -70,6 +77,8 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
             raise
 
     async def cleanup(app):
+        if PURGE_TASK in app:
+            app[PURGE_TASK].cancel()
         if POOL in app:
             await app[POOL].close()
 

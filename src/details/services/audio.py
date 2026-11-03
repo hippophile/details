@@ -50,6 +50,25 @@ def to_flac(ffmpeg, src, dst):
         raise AudioError(f"ffmpeg failed: {type(e).__name__}") from None
 
 
+def normalise(ffmpeg, src, dst, sample_rate=16000):
+    """Any audio/video file -> mono FLAC at sample_rate, video and metadata dropped. Via .part, renamed on success."""
+    dst = pathlib.Path(dst)
+    part = dst.with_name(dst.name + ".part")
+    try:
+        r = subprocess.run([ffmpeg, "-y", "-v", "error", "-i", str(src), "-vn", "-map_metadata", "-1",
+                            "-ar", str(sample_rate), "-ac", "1", "-c:a", "flac", "-f", "flac", str(part)],
+                           capture_output=True, text=True, timeout=6 * 3600)
+        if r.returncode or not part.exists():
+            raise AudioError(f"ffmpeg exited {r.returncode}: {r.stderr.strip()[:200]}")
+        os.replace(part, dst)
+    except AudioError:
+        part.unlink(missing_ok=True)
+        raise
+    except Exception as e:
+        part.unlink(missing_ok=True)
+        raise AudioError(f"ffmpeg failed: {type(e).__name__}") from None
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:

@@ -25,6 +25,10 @@ max_msg_mb = 1
 ffmpeg = ""
 ffprobe = ""
 tz = "Europe/Athens"
+[trash]
+days = 30
+[import]
+max_mb = 2048
 """
 
 

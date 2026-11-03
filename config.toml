@@ -25,3 +25,9 @@ max_msg_mb = 1                    # WebSocket max message size
 ffmpeg = ""                       # empty = look up on PATH
 ffprobe = ""
 tz = "Europe/Athens"              # DETAILS_TZ is accepted as an alias; used by the v1 importer
+
+[trash]
+days = 30                         # trashed recordings are purged after this many days (>= 1)
+
+[import]
+max_mb = 2048                     # Library import upload cap
