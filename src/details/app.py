@@ -6,9 +6,11 @@ from aiohttp import web
 from psycopg_pool import AsyncConnectionPool
 
 from .api.live_v1 import add_live_routes
+from .api.record import add_record_routes
 from .db import open_pool
 from .migrate import MIGRATIONS_DIR, check_pending
 from .security import local_only
+from .services import recordings, scripts
 from .settings import REPO_ROOT, Settings
 
 BIND_HOST = "127.0.0.1"
@@ -43,6 +45,15 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     if (web_dir / "shared").is_dir():
         app.router.add_static("/shared/", web_dir / "shared")
     add_live_routes(app, settings)
+    add_record_routes(app, settings, POOL)
+
+    async def recover_hook(app):
+        await recordings.recover_all(app[POOL], settings)
+
+    async def seed_hook(app):
+        await scripts.sync_scripts(app[POOL])
+
+    hooks = (recover_hook, seed_hook, *hooks)
 
     async def startup(app):
         if not settings.db.url:

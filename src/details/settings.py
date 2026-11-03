@@ -37,11 +37,25 @@ class Db:
 
 
 @dataclass(frozen=True)
+class Record:
+    sample_rate: int
+    sync_interval_s: float
+    grace_s: float
+    keep_wav: bool
+    min_free_gb: float
+    max_msg_mb: int
+    ffmpeg: str
+    ffprobe: str
+    tz: str
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
     lmstudio: LmStudio
     db: Db
+    record: Record
 
 
 def _v_server(s):
@@ -63,15 +77,35 @@ def _v_db(s):
         raise ValueError("db.connect_timeout: must be >= 1")
 
 
+def _v_record(s):
+    if s.sample_rate <= 0:
+        raise ValueError("record.sample_rate: must be > 0")
+    if s.sync_interval_s <= 0:
+        raise ValueError("record.sync_interval_s: must be > 0")
+    if s.grace_s < 0:
+        raise ValueError("record.grace_s: must be >= 0")
+    if s.min_free_gb < 0:
+        raise ValueError("record.min_free_gb: must be >= 0")
+    if s.max_msg_mb < 1:
+        raise ValueError("record.max_msg_mb: must be >= 1")
+    try:
+        import zoneinfo
+        zoneinfo.ZoneInfo(s.tz)
+    except Exception:
+        raise ValueError("record.tz: unknown time zone") from None
+
+
 # section name -> (dataclass, validation hook). Later changes add a section here + a [section] in config.toml.
 SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
-            "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db)}
+            "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
+            "record": (Record, _v_record)}
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],
     ("paths", "hf_hub"): [("HF_HOME", lambda v: str(pathlib.Path(v).expanduser() / "hub"))],
     ("db", "url"): [("DATABASE_URL", None)],
     ("db", "url_test"): [("DATABASE_URL_TEST", None)],
+    ("record", "tz"): [("DETAILS_TZ", None)],
 }
 
 
@@ -98,6 +132,17 @@ def _coerce(section, key, typ, value):
     try:
         if typ is int:
             return int(value)
+        if typ is float:
+            return float(value)
+        if typ is bool:
+            if isinstance(value, bool):
+                return value
+            v = str(value).strip().lower()
+            if v in ("1", "true", "yes", "on"):
+                return True
+            if v in ("0", "false", "no", "off"):
+                return False
+            raise ValueError(v)
         if typ is pathlib.Path:
             return pathlib.Path(str(value)).expanduser().absolute()
         return str(value)

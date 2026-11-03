@@ -14,3 +14,14 @@ cli = "~/.lmstudio/bin/lms"
 url = ""
 url_test = ""
 connect_timeout = 5
+
+[record]
+sample_rate = 16000               # browser must capture at this rate (no resampling anywhere)
+sync_interval_s = 5               # WAV header patch + fsync interval while recording
+grace_s = 60                      # seconds a dropped take waits for a resume before auto-finalizing
+keep_wav = false                  # keep rec.wav next to master.flac
+min_free_gb = 2                   # refuse to start below this much free disk
+max_msg_mb = 1                    # WebSocket max message size
+ffmpeg = ""                       # empty = look up on PATH
+ffprobe = ""
+tz = "Europe/Athens"              # DETAILS_TZ is accepted as an alias; used by the v1 importer

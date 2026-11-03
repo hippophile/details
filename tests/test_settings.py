@@ -15,6 +15,16 @@ cli = "/opt/lms"
 url = ""
 url_test = ""
 connect_timeout = 5
+[record]
+sample_rate = 16000
+sync_interval_s = 5
+grace_s = 60
+keep_wav = false
+min_free_gb = 2
+max_msg_mb = 1
+ffmpeg = ""
+ffprobe = ""
+tz = "Europe/Athens"
 """
 
 
@@ -84,3 +94,14 @@ def test_hf_home_sets_hub(cfg):
 def test_settings_is_frozen(cfg):
     with pytest.raises(Exception):
         load(cfg).server.port = 1
+
+
+def test_record_section_defaults_env_and_validation():
+    from details.settings import SettingsError, load_settings
+    s = load_settings(env={}, dotenv_path=None)
+    assert s.record.sample_rate == 16000 and s.record.keep_wav is False and s.record.grace_s == 60
+    assert load_settings(env={"DETAILS_RECORD_GRACE_S": "5"}, dotenv_path=None).record.grace_s == 5
+    assert load_settings(env={"DETAILS_RECORD_KEEP_WAV": "true"}, dotenv_path=None).record.keep_wav is True
+    import pytest
+    with pytest.raises(SettingsError, match="record.sample_rate"):
+        load_settings(env={"DETAILS_RECORD_SAMPLE_RATE": "0"}, dotenv_path=None)

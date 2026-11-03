@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Record</title>
+<link rel="stylesheet" href="/shared/shared.css">
+<style>
+  input[type=text] { font-size:16px; padding:8px 10px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); width:100%; }
+  input[type=text]:disabled { opacity:.6; }
+  #mic { min-width:170px; }
+  .hint a { color:var(--accent); }
+  #timer { font-size:28px; font-variant-numeric:tabular-nums; font-weight:600; }
+  #status { color:var(--muted); font-size:14px; }
+  .meterwrap { position:relative; margin:10px 0 4px; height:22px; border-radius:6px; background:var(--line); }
+  #bar { position:absolute; left:0; top:0; height:22px; border-radius:6px; background:var(--good); width:0; transition:width .05s; }
+  .scale { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+  #clips { font-size:14px; color:var(--muted); }
+  #clips.hit { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; font-size:14px; margin-top:8px; }
+  .err { color:var(--bad); font-size:14px; margin-top:8px; }
+  .hint { font-size:13px; color:var(--muted); margin-top:8px; }
+  .script p { margin:0 0 8px; font-size:18px; }
+  .s1 { color:#1d6fb8; } .s2 { color:#b5521b; } .s3 { color:#7a3fb0; }
+  @media (prefers-color-scheme: dark) { .s1 { color:#6fb1ec; } .s2 { color:#f0955f; } .s3 { color:#c39af0; } }
+  a.btn { text-decoration:none; display:inline-block; }
+  #saved .btn { font-size:15px; padding:9px 18px; }
+  .btn.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  #saved .meta { color:var(--muted); font-size:14px; margin:4px 0 12px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<nav id="nav" aria-label="Pages"></nav>
+<main>
+  <h1>Record</h1>
+
+  <div class="card">
+    <label for="title">Title (optional)</label>
+    <input type="text" id="title" placeholder="Recording YYYY-MM-DD HH:MM" autocomplete="off">
+    <div class="row" style="margin-top:14px; justify-content:space-between">
+      <div id="timer" aria-live="off">00:00</div>
+      <button class="btn" id="mic">Mic on</button>
+    </div>
+    <div id="status" style="margin-top:8px">Press Mic on and read a script below.</div>
+    <div class="err" id="error" role="alert" hidden></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div>Level: <span id="levelText">mic off</span></div>
+      <div id="clips">0 clips</div>
+    </div>
+    <div class="meterwrap"><div id="bar"></div></div>
+    <div class="scale"><span>-70 dB</span><span>good</span><span>0 dB</span></div>
+    <div class="warn" id="dead" role="alert" hidden>No signal - is the mic muted?</div>
+    <div class="warn" id="bufwarn" role="alert" hidden>Connection lost for a long time: the oldest audio was dropped.</div>
+    <div class="hint">Keep the Mac awake while recording - sleep or lid-close silently drops audio. Want live text while you talk? Use the <a href="/live">v1 live page</a>.</div>
+  </div>
+
+  <div class="card" id="saved" hidden>
+    <h2>Saved</h2>
+    <div id="savedTitle" style="font-size:18px; font-weight:600"></div>
+    <div class="meta" id="savedMeta"></div>
+    <div class="warn" id="savedWarn" hidden></div>
+    <div class="row">
+      <a class="btn" id="analyse" href="/analyse">Analyse now</a>
+      <a class="btn ghost" href="/library">Open library</a>
+      <button class="btn ghost" id="again" type="button">New recording</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Test scripts - read out loud, change your voice per person</h2>
+    <div class="tabs" role="tablist" id="tabs" aria-label="Test scripts"></div>
+    <div id="panels"></div>
+  </div>
+</main>
+<script src="/shared/nav.js"></script>
+<script src="/record/record.js"></script>
+</body>
+</html>
