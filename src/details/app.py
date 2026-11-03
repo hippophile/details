@@ -1,17 +1,25 @@
 """Application factory. Startup order is fixed: open pool, migration check, then registered hooks in order."""
-import asyncio, pathlib
+import asyncio, importlib, importlib.util, pathlib
 
 from aiohttp import web
 
 from psycopg_pool import AsyncConnectionPool
 
+from .api.jobs import JOBS, add_jobs_routes
 from .api.live_v1 import add_live_routes
+from .api.models import add_models_routes
 from .api.record import add_record_routes
 from .api.recordings import add_recordings_routes
 from .db import open_pool
+from .llm.lmstudio_ctl import CliTransport, Controller
 from .migrate import MIGRATIONS_DIR, check_pending
+from .runner.memory import MemoryManager, VmStatMemInfo
+from .runner.runner import JobRunner
+from .runner.steps import steps as default_steps
 from .security import local_only
 from .services import recordings, scripts, trash
+from .services.jobs import JobService
+from .services.models import load_registry, resolve_path
 from .settings import REPO_ROOT, Settings
 
 BIND_HOST = "127.0.0.1"
@@ -19,10 +27,14 @@ PAGES = ("record", "library", "analyse")
 SETTINGS = web.AppKey("settings", Settings)
 POOL = web.AppKey("pool", AsyncConnectionPool)
 PURGE_TASK = web.AppKey("purge_task", asyncio.Task)
+RUNNER = web.AppKey("runner", JobRunner)
+STEP_MODULES = ("details.runner.steps_stt", "details.runner.steps_analyse")   # owned by stt-runs / llm-outputs
 
 
-def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=()):
-    """hooks: async callables(app) run in order after the migration check (recovery, seed sync, purge, ...)."""
+def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(), step_registry=None,
+               lm_transport=None, meminfo=None):
+    """hooks: async callables(app) run in order after the migration check (recovery, seed sync, purge, ...).
+    step_registry / lm_transport / meminfo: injection points for tests (defaults: the real ones)."""
     web_dir = pathlib.Path(web_dir or REPO_ROOT / "web")
     app = web.Application(middlewares=[local_only])
     app[SETTINGS] = settings
@@ -49,6 +61,16 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_live_routes(app, settings)
     add_record_routes(app, settings, POOL)
     add_recordings_routes(app, settings, POOL)
+    registry = load_registry(resolve_path(settings))
+    ctl = Controller(lm_transport or CliTransport(settings))
+    memory = MemoryManager(ctl, registry, settings, meminfo or VmStatMemInfo())
+    if step_registry is None:
+        step_registry = default_steps
+        for mod in STEP_MODULES:      # absent until those changes land
+            if importlib.util.find_spec(mod) is not None:
+                importlib.import_module(mod)
+    add_models_routes(app, settings, registry, ctl)
+    add_jobs_routes(app)
 
     async def recover_hook(app):
         await recordings.recover_all(app[POOL], settings)
@@ -60,7 +82,13 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         await trash.purge(app[POOL], settings)
         app[PURGE_TASK] = asyncio.create_task(trash.purge_loop(app[POOL], settings))
 
-    hooks = (recover_hook, seed_hook, purge_hook, *hooks)
+    async def runner_hook(app):
+        svc = JobService(app[POOL], step_registry, registry)
+        app[JOBS] = svc
+        app[RUNNER] = JobRunner(svc, settings, memory, step_registry)
+        await app[RUNNER].start()
+
+    hooks = (recover_hook, seed_hook, purge_hook, runner_hook, *hooks)
 
     async def startup(app):
         if not settings.db.url:
@@ -72,11 +100,15 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
             for hook in hooks:
                 await hook(app)
         except BaseException:
+            if RUNNER in app:
+                await app[RUNNER].stop()
             app.pop(POOL, None)
             await pool.close()
             raise
 
     async def cleanup(app):
+        if RUNNER in app:
+            await app[RUNNER].stop()
         if PURGE_TASK in app:
             app[PURGE_TASK].cancel()
         if POOL in app:

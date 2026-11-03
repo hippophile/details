@@ -11,6 +11,7 @@ hf_hub = "~/.cache/huggingface/hub"
 [lmstudio]
 url = "http://localhost:1234"
 cli = "/opt/lms"
+exclusive = false
 [db]
 url = ""
 url_test = ""
@@ -29,6 +30,11 @@ tz = "Europe/Athens"
 days = 30
 [import]
 max_mb = 2048
+[models]
+path = "models.toml"
+[runner]
+heartbeat_timeout_s = 120
+cancel_grace_s = 5
 """
 
 

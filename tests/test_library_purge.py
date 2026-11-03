@@ -72,10 +72,8 @@ def _job(db, rid, status):
 
 
 def test_active_job_blocks_purge(db, db_url, mk_settings):
-    if not has_table(db, "job"):
-        pytest.skip("job table does not exist yet: extended when those tables exist (jobs-and-models)")
     s = mk_settings(db_url)
-    for status in ("queued", "running"):
+    for status in ("queued", "running", "cancelling"):
         rid = seed(db, s, status, deleted_at=ago(40))
         _job(db, rid, status)
         purge(db_url, s)
@@ -83,8 +81,6 @@ def test_active_job_blocks_purge(db, db_url, mk_settings):
 
 
 def test_finished_job_purged_with_job_dir(db, db_url, mk_settings):
-    if not has_table(db, "job"):
-        pytest.skip("job table does not exist yet: extended when those tables exist (jobs-and-models)")
     s = mk_settings(db_url)
     rid = seed(db, s, "fin", deleted_at=ago(40))
     jid = _job(db, rid, "done")

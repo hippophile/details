@@ -9,6 +9,7 @@ hf_hub = "~/.cache/huggingface/hub"   # HF_HOME/hub wins when HF_HOME is set
 [lmstudio]
 url = "http://localhost:1234"
 cli = "~/.lmstudio/bin/lms"
+exclusive = false                 # true = the app may also unload LM Studio models it did not load
 
 [db]                              # url / url_test come from DATABASE_URL / DATABASE_URL_TEST
 url = ""
@@ -31,3 +32,10 @@ days = 30                         # trashed recordings are purged after this man
 
 [import]
 max_mb = 2048                     # Library import upload cap
+
+[models]
+path = "models.toml"              # model registry; relative to the repo root
+
+[runner]
+heartbeat_timeout_s = 120         # a child process silent for this long is killed and its job fails
+cancel_grace_s = 5                # SIGTERM -> SIGKILL delay when cancelling

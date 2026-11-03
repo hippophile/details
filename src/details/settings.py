@@ -27,6 +27,7 @@ class Paths:
 class LmStudio:
     url: str
     cli: str
+    exclusive: bool   # true = the memory manager may also unload models it did not load
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,17 @@ class Import:
 
 
 @dataclass(frozen=True)
+class Models:
+    path: str   # models.toml; a relative path is resolved against the repo root
+
+
+@dataclass(frozen=True)
+class Runner:
+    heartbeat_timeout_s: float
+    cancel_grace_s: float
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
@@ -67,6 +79,8 @@ class Settings:
     db: Db
     record: Record
     trash: Trash
+    models: Models
+    runner: Runner
     import_: Import   # config section [import]; trailing underscore because `import` is a keyword
 
 
@@ -112,6 +126,18 @@ def _v_trash(s):
         raise ValueError("trash.days: must be >= 1")
 
 
+def _v_models(s):
+    if not s.path:
+        raise ValueError("models.path: must not be empty")
+
+
+def _v_runner(s):
+    if s.heartbeat_timeout_s <= 0:
+        raise ValueError("runner.heartbeat_timeout_s: must be > 0")
+    if s.cancel_grace_s < 0:
+        raise ValueError("runner.cancel_grace_s: must be >= 0")
+
+
 def _v_import(s):
     if s.max_mb <= 0:
         raise ValueError("import.max_mb: must be > 0")
@@ -120,7 +146,8 @@ def _v_import(s):
 # section name -> (dataclass, validation hook). Later changes add a section here + a [section] in config.toml.
 SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
             "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
-            "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import)}
+            "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import),
+            "models": (Models, _v_models), "runner": (Runner, _v_runner)}
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],

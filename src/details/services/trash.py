@@ -9,21 +9,18 @@ SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 async def purge(pool, settings):
-    """-> list of purged recording ids. Skips recordings with a queued/running job (when the job table exists)."""
+    """-> list of purged recording ids. Skips recordings with a queued/running/cancelling job."""
     async with pool.connection() as c:
         cur = await c.execute("SELECT id FROM recording WHERE deleted_at IS NOT NULL "
                               "AND deleted_at < now() - make_interval(days => %s)", (settings.trash.days,))
         ids = [str(r["id"]) for r in await cur.fetchall()]
-        has_jobs = (await (await c.execute("SELECT to_regclass('job') IS NOT NULL AS t")).fetchone())["t"]
         done = []
         for rid in ids:
-            job_ids = []
-            if has_jobs:
-                cur = await c.execute("SELECT id, status FROM job WHERE recording_id=%s", (rid,))
-                jobs = await cur.fetchall()
-                if any(j["status"] in ("queued", "running") for j in jobs):
-                    continue
-                job_ids = [str(j["id"]) for j in jobs]
+            cur = await c.execute("SELECT id, status FROM job WHERE recording_id=%s", (rid,))
+            jobs = await cur.fetchall()
+            if any(j["status"] in ("queued", "running", "cancelling") for j in jobs):
+                continue
+            job_ids = [str(j["id"]) for j in jobs]
             await c.execute("DELETE FROM recording WHERE id=%s AND deleted_at IS NOT NULL", (rid,))
             shutil.rmtree(recordings.recordings_dir(settings) / rid, ignore_errors=True)
             for j in job_ids:

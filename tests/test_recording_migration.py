@@ -17,8 +17,9 @@ def test_tables_and_columns(db):
 
 
 def test_only_two_tables_added(db):
+    """0002 adds script + recording; later migrations add their own tables (job: 0003)."""
     names = {r[0] for r in db.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
-    assert {"script", "recording"} <= names and names <= {"schema_migration", "script", "recording"}
+    assert {"script", "recording"} <= names and names <= {"schema_migration", "script", "recording", "job"}
 
 
 def test_slug_unique(db):

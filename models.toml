@@ -1,0 +1,37 @@
+# Model registry: adding a model = one block. engine: stt -> "mlx_whisper", llm -> "lmstudio".
+# role: cheap | nice | fast | accurate.  needs_gb values are estimates, not measured.
+# LM Studio keys are the `modelKey` column of `lms ls --json` (checked 2026-11-03).
+
+[stt.whisper-turbo]
+engine = "mlx_whisper"
+label = "Whisper large-v3 turbo"
+repo = "mlx-community/whisper-large-v3-turbo"
+needs_gb = 3
+langs = ["el", "en"]
+role = "fast"
+enabled = true
+
+[stt.whisper-large]
+engine = "mlx_whisper"
+label = "Whisper large-v3"
+repo = "mlx-community/whisper-large-v3-mlx"
+needs_gb = 5
+langs = ["el", "en"]
+role = "accurate"
+enabled = true
+
+[llm.gemma-cheap]
+engine = "lmstudio"
+label = "Gemma 4 E4B"
+model = "google/gemma-4-e4b"
+context = 8192
+needs_gb = 7                      # 6.4 GiB seen loaded at 4096 context
+role = "cheap"
+
+[llm.gemma-nice]
+engine = "lmstudio"
+label = "Gemma 4 26B A4B QAT"
+model = "gemma-4-26b-a4b-it-qat-mlx"
+context = 32768
+needs_gb = 17                     # 15.6 GB on disk + KV cache
+role = "nice"
