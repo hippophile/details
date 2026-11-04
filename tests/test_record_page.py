@@ -28,3 +28,15 @@ def test_scripts_api_ordered(db, db_url, mk_settings):
             assert len(data) == 4 and all({"id", "name", "body_md"} <= set(x) for x in data)
             assert data[1]["name"].startswith("Bank BPMN review")
     asyncio.run(go())
+
+
+def test_record_page_has_silence_line(mk_settings):
+    """User asked for the v1 'silence line': a draggable threshold on the level meter."""
+    async def go():
+        async with client_for(create_app(mk_settings())) as c:
+            t = await (await c.get("/record")).text()
+            for needle in ('id="threshold"', 'type="range"', 'id="thr"', 'id="thrVal"'):
+                assert needle in t, needle
+            js = await (await c.get("/record/record.js")).text()
+            assert "silence" in js and "threshold" in js
+    asyncio.run(go())

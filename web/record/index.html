@@ -14,6 +14,7 @@
   #status { color:var(--muted); font-size:14px; }
   .meterwrap { position:relative; margin:10px 0 4px; height:22px; border-radius:6px; background:var(--line); }
   #bar { position:absolute; left:0; top:0; height:22px; border-radius:6px; background:var(--good); width:0; transition:width .05s; }
+  #thr { position:absolute; top:-4px; width:2px; height:30px; background:var(--fg); }
   .scale { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
   #clips { font-size:14px; color:var(--muted); }
   #clips.hit { color:var(--bad); font-weight:600; }
@@ -51,8 +52,12 @@
       <div>Level: <span id="levelText">mic off</span></div>
       <div id="clips">0 clips</div>
     </div>
-    <div class="meterwrap"><div id="bar"></div></div>
-    <div class="scale"><span>-70 dB</span><span>good</span><span>0 dB</span></div>
+    <div class="meterwrap"><div id="bar"></div><div id="thr"></div></div>
+    <div class="scale"><span>-70 dB</span><span>too quiet</span><span>good</span><span>too loud</span><span>0 dB</span></div>
+    <div class="row" style="margin-top:10px">
+      <label for="threshold">Silence line (below = treated as silence):</label>
+      <input type="range" id="threshold" min="-65" max="-20" value="-45"><span id="thrVal">-45 dB</span>
+    </div>
     <div class="warn" id="dead" role="alert" hidden>No signal - is the mic muted?</div>
     <div class="warn" id="bufwarn" role="alert" hidden>Connection lost for a long time: the oldest audio was dropped.</div>
     <div class="hint">Keep the Mac awake while recording - sleep or lid-close silently drops audio. Want live text while you talk? Use the <a href="/live">v1 live page</a>.</div>

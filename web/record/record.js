@@ -63,6 +63,16 @@ async function loadScripts() {
 
 // ---- helpers --------------------------------------------------------------------------------------
 const pos = db => Math.max(0, Math.min(100, (db - MIN_DB) / -MIN_DB * 100));
+// Silence line (as in v1): where speech starts on the meter. Remembered per browser; visual only for now.
+const threshold = () => +$("threshold").value;
+function placeThreshold() {
+  $("thr").style.left = pos(threshold()) + "%";
+  $("thrVal").textContent = threshold() + " dB";
+  try { localStorage.setItem("details.silence_db", String(threshold())); } catch (_) {}
+}
+try { const v = localStorage.getItem("details.silence_db"); if (v) $("threshold").value = v; } catch (_) {}
+$("threshold").addEventListener("input", placeThreshold);
+placeThreshold();
 const mmss = s => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(Math.floor(s % 60)).padStart(2, "0");
 function defaultTitle() {
   const d = new Date(), p = n => String(n).padStart(2, "0");
@@ -87,9 +97,11 @@ function onBlock({ pcm, rms, peak }) {
   level = rms > level ? rms : level * 0.7 + rms * 0.3;
   const clipped = peak > CLIP_DB;
   if (clipped) { clips++; $("clips").textContent = `${clips} clip${clips === 1 ? "" : "s"}`; $("clips").classList.add("hit"); }
+  const thr = threshold();
   $("bar").style.width = pos(level) + "%";
-  $("bar").style.background = clipped ? "var(--bad)" : "var(--good)";
-  $("levelText").textContent = `${level.toFixed(0)} dB`;
+  $("bar").style.background = clipped ? "var(--bad)" : level > thr ? "var(--good)" : "var(--muted)";
+  $("levelText").textContent = `${level.toFixed(0)} dB - ` + (clipped ? "clipping, move back" : level < thr ? "silence"
+    : level < -40 ? "speech, but quiet" : level > -8 ? "too loud" : "good");
   quiet = peak < DEAD_DB ? quiet + 1 : 0;
   $("dead").hidden = quiet < DEAD_BLOCKS;
   queue.push(pcm);
