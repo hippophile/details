@@ -57,3 +57,5 @@ max_tokens_debrief = 2000
 max_tokens_notes = 2000
 max_tokens_checklist = 1500
 max_tokens_tags = 400
+stream = true                     # DETAILS_LLM_STREAM: replies are streamed so the page shows them as they are written
+stream_idle_timeout_s = 60        # a streamed call fails after this long without any bytes (replaces timeout_s for it)

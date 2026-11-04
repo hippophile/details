@@ -8,7 +8,7 @@ from psycopg_pool import AsyncConnectionPool
 from .api.analyses import add_analyses_routes
 from .api.comparisons import add_comparisons_routes
 from .api.insights import add_insights_routes
-from .api.jobs import JOBS, add_jobs_routes
+from .api.jobs import JOBS, STREAM_HUB, add_jobs_routes
 from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
 from .api.record import add_record_routes
@@ -16,6 +16,7 @@ from .api.recordings import add_recordings_routes
 from .api.stt_runs import add_stt_runs_routes
 from .db import open_pool
 from .llm.lmstudio_ctl import CliTransport, Controller
+from .llm.stream_hub import StreamHub
 from .migrate import MIGRATIONS_DIR, check_pending
 from .runner.joblog import JobLogs
 from .runner.lease import GpuLease
@@ -48,6 +49,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     app[SETTINGS] = settings
     app[LEASE] = lease = GpuLease()
     app[JOBLOGS] = joblogs = JobLogs.for_settings(settings)
+    app[STREAM_HUB] = hub = StreamHub()            # live reply text of the running analyse step (llm-streaming)
 
     async def health(request):
         return web.json_response({"ok": True, "db": POOL in app})
@@ -104,7 +106,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     async def prompts_hook(app):
         from .llm.prompts import sync_prompts
         from .runner import steps_analyse
-        steps_analyse.bind(app[POOL], memory=memory, settings=settings, lease=lease)
+        steps_analyse.bind(app[POOL], memory=memory, settings=settings, hub=hub, lease=lease)
         await sync_prompts(app[POOL])
 
     async def runner_hook(app):

@@ -7,7 +7,7 @@ import hashlib, logging, types
 from psycopg.types.json import Jsonb
 
 from ..llm import client, pipeline
-from ..llm.client import LLMError
+from ..llm.client import LLMError, StreamCancelled
 from ..llm.lmstudio_ctl import identifier_for
 from ..llm.prompts import language_name
 from .joblog import JobLogs
@@ -20,7 +20,8 @@ RUN_COLS = ("group_id, stt_run_id, kind, prompt_template_id, llm_endpoint, model
 
 
 def bind(pool, *, memory=None, settings=None, hub=None, lease=None):
-    """memory/settings/lease enable the terminal unload; `hub` is reserved for live-assistant (unused here)."""
+    """memory/settings/lease enable the terminal unload; `hub` (llm.stream_hub.StreamHub) receives the live reply
+    text of the running step (llm-streaming); None = no live view."""
     global _POOL, _MEMORY, _SETTINGS, _HUB, _LEASE
     _POOL, _MEMORY, _SETTINGS, _HUB, _LEASE = pool, memory, settings, hub, lease
 
@@ -65,6 +66,14 @@ async def _persist(c, first_id, kind, result):
 
 
 async def analyse(ctx):
+    try:
+        return await _analyse(ctx)
+    finally:
+        if _HUB is not None:
+            _HUB.end_job(ctx.job_id)          # the live text is not kept after the step
+
+
+async def _analyse(ctx):
     pool, p = _POOL, ctx.params
     gid = p.get("group_id")
     async with pool.connection() as c:
@@ -92,18 +101,53 @@ async def analyse(ctx):
     await ctx.memory.ensure_llm(entry)       # no-op when loaded; a retry after the terminal unload reloads it
     totals = {"tokens_in": 0, "tokens_out": 0, "wall_ms": 0}
 
+    hub, jid = _HUB, ctx.job_id
+    plain_models = set()          # models whose streaming request was refused: plain calls for the rest of the job
+    live = {"chunk": None, "last": {}}
+
+    def on_event(typ, *a, **kw):
+        if typ == "chunk":
+            live["chunk"] = (a[0], a[1]) if a[0] else None
+        elif typ == "attempt_end" and hub is not None:
+            hub.end_attempt(jid, valid=kw["valid"], finish_reason=live["last"].get("finish_reason"),
+                            tokens_out=live["last"].get("tokens_out"))
+
     async def chat(messages, *, kind, schema, max_tokens):
         attempt = 2 if any(m.get("role") == "assistant" for m in messages) else 1     # a retry appends the bad reply
         info = {"model": model_name, "kind": kind, "attempt": attempt}
+        args = dict(model=model_name, kind=kind, schema=schema, messages=messages, max_tokens=max_tokens)
+        streamed, fb = False, None
+        if hub is not None:
+            hub.start_attempt(jid, kind, attempt, live["chunk"])
         try:
-            r = await client.chat(ctx.settings, model=model_name, kind=kind, schema=schema, messages=messages,
-                                  max_tokens=max_tokens)
+            if ctx.settings.llm.stream and model_name not in plain_models:
+                try:
+                    r = await client.chat_stream(ctx.settings, **args, cancelled=ctx.cancelled,
+                                                 on_delta=(lambda t: hub.delta(jid, t)) if hub is not None else None)
+                    streamed = True
+                except client.StreamUnsupported as u:
+                    plain_models.add(model_name)
+                    fb = u.reason
+                    if hub is not None:
+                        hub.fallback(jid, fb)
+                    r = await client.chat(ctx.settings, **args)
+            else:
+                r = await client.chat(ctx.settings, **args)
+        except StreamCancelled:
+            ctx.log("warn", "LM Studio call cancelled", src="llm", **info, stream=True, status="cancelled")
+            if hub is not None:
+                hub.end_attempt(jid, valid=None, cancelled=True)
+            raise
         except LLMError as e:
             ctx.log("error", "LM Studio call failed", src="llm", **info, tokens_in=None, tokens_out=None,
-                    wall_ms=None, finish_reason=None, status=e.status)
+                    wall_ms=None, finish_reason=None, status=e.status, stream=streamed or None, fallback=fb)
+            if hub is not None:
+                hub.end_attempt(jid, valid=None, error=True)
             raise
+        live["last"] = r
         ctx.log("info", "LM Studio call", src="llm", **info, tokens_in=r["tokens_in"], tokens_out=r["tokens_out"],
-                wall_ms=r["wall_ms"], finish_reason=r["finish_reason"], status="ok")
+                wall_ms=r["wall_ms"], finish_reason=r["finish_reason"], status="ok", stream=streamed,
+                ttft_ms=r["raw"].get("ttft_ms") if streamed else None, fallback=fb)
         for k in totals:
             totals[k] += r[k]
         ctx.metrics(model=model_name, tokens_in=totals["tokens_in"], tokens_out=totals["tokens_out"],
@@ -122,6 +166,7 @@ async def analyse(ctx):
                             "WHERE id=%s", (input_sha, row["id"]))
         ctx.progress(n / len(rows), f"Writing {kind} ({n + 1}/{len(rows)})")
         template = types.SimpleNamespace(body=row["body"], sha256=row["sha256"])
+        live["chunk"] = None
 
         def on_progress(frac, msg=""):
             ctx.progress((n + frac) / len(rows), msg)
@@ -129,11 +174,14 @@ async def analyse(ctx):
             result = await pipeline.generate_kind(chat, settings=ctx.settings, kind=kind, template=template,
                                                   model=model_name, context=entry.context, segments=segs,
                                                   language=language, title=run["title"], data_dir=ctx.data_dir,
-                                                  on_progress=on_progress)
+                                                  on_progress=on_progress, on_event=on_event)
+        except StreamCancelled:
+            return None                     # cancelled mid-stream: nothing stored, the finalizer ends every row 'cancelled'
         except LLMError as e:
-            async with pool.connection() as c:
-                await c.execute("UPDATE analysis_run SET status='failed', error=%s, finished_at=now() WHERE id=%s",
-                                (str(e), row["id"]))
+            if not ctx.cancelled.is_set():
+                async with pool.connection() as c:
+                    await c.execute("UPDATE analysis_run SET status='failed', error=%s, finished_at=now() WHERE id=%s",
+                                    (str(e), row["id"]))
             raise StepError(str(e)) from None
         async with pool.connection() as c:
             async with c.transaction():

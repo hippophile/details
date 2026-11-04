@@ -59,8 +59,9 @@ def _parse(text, finish_reason):
     return data, None
 
 
-async def call_validated(chat, kind, messages, schema, validate, max_tokens):
-    """-> list of 1-2 Attempts. Exactly one retry, which appends the model's reply and the validation errors."""
+async def call_validated(chat, kind, messages, schema, validate, max_tokens, on_event=None):
+    """-> list of 1-2 Attempts. Exactly one retry, which appends the model's reply and the validation errors.
+    on_event("attempt_end", valid=, attempt=, kind=) is called after each attempt is checked (live view; optional)."""
     attempts, msgs = [], list(messages)
     for n in range(2):
         r = await chat(msgs, kind=kind, schema=schema, max_tokens=max_tokens)
@@ -70,6 +71,8 @@ async def call_validated(chat, kind, messages, schema, validate, max_tokens):
         a = Attempt("\n\n".join(m["content"] for m in msgs), r["text"], r["tokens_in"], r["tokens_out"], r["wall_ms"],
                     r.get("finish_reason"), r["raw"], errs, None if errs else data)
         attempts.append(a)
+        if on_event:
+            on_event("attempt_end", valid=not errs, attempt=n + 1, kind=kind)
         if not errs:
             break
         msgs = msgs + [{"role": "assistant", "content": r["text"]},
@@ -122,7 +125,9 @@ def _sum(attempts, **extra):
 
 
 async def generate_kind(chat, *, settings, kind, template, model, context, segments, language, title, data_dir,
-                        on_progress=None):
+                        on_progress=None, on_event=None):
+    """on_event (optional, live view): ("chunk", i, n) before each map call (1-based), ("chunk", None, None) before
+    the reduce call, plus call_validated's ("attempt_end", ...)."""
     llm = settings.llm
     full = "\n".join(segments)
     max_tokens = llm.max_tokens(kind)
@@ -134,7 +139,7 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
         return [{"role": "user", "content": render(template.body, text, language, title)}]
 
     if estimate_tokens(full, llm.chars_per_token) <= min(llm.single_pass_max_tokens, room):
-        attempts = await call_validated(chat, kind, prompt(full), schema, validate, max_tokens)
+        attempts = await call_validated(chat, kind, prompt(full), schema, validate, max_tokens, on_event)
         last = attempts[-1]
         content, v, u = (None, 0, 0) if not last.valid else quotes.verify(last.content, full)
         return KindResult(attempts, content, "single", 1, 0, v, u, _sum(attempts))
@@ -160,7 +165,9 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
             contents.append(hit["content"])
             hits += 1
         else:
-            attempts = await call_validated(chat, kind, prompt(text), schema, validate, max_tokens)
+            if on_event:
+                on_event("chunk", i + 1, len(chunks))
+            attempts = await call_validated(chat, kind, prompt(text), schema, validate, max_tokens, on_event)
             if not attempts[-1].valid:
                 return failed(attempts)
             calls.extend(attempts)
@@ -174,7 +181,9 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
         parts = "\n".join(f"- {c[field_]}" for c in contents)
         msgs = [{"role": "user", "content": REDUCE_PROMPT.format(what=field_, target=target, language=language,
                                                                  parts=parts)}]
-        red = await call_validated(chat, "reduce", msgs, REDUCE_SCHEMA, _reduce_errors, red_max)
+        if on_event:
+            on_event("chunk", None, None)
+        red = await call_validated(chat, "reduce", msgs, REDUCE_SCHEMA, _reduce_errors, red_max, on_event)
         if not red[-1].valid:
             return failed(red)
         calls.extend(red)

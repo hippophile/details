@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/analyse/analyse.css">
 <link rel="stylesheet" href="/analyse/outputs.css">
 <link rel="stylesheet" href="/analyse/insights.css">
+<link rel="stylesheet" href="/analyse/stream.css">
 <link rel="stylesheet" href="/analyse/compare.css">
 </head>
 <body>
@@ -87,6 +88,12 @@
         <div class="meta" id="aiStatus" role="status" aria-live="polite"></div>
       </div>
       <div class="meta" id="aiReason" role="status" aria-live="polite"></div>
+    </div>
+
+    <div id="liveBox" class="card livebox" hidden>
+      <div class="live-top"><span class="live-title">Gemma is writing</span><span id="liveHead" class="meta" aria-live="off"></span>
+        <span id="liveNote" class="meta"></span></div>
+      <pre id="liveText" tabindex="0" aria-label="Reply as it is written (draft, not yet checked)"></pre>
     </div>
 
     <div id="aiInsightsHost"></div>
@@ -175,6 +182,7 @@
 <script src="/shared/nav.js"></script>
 <script src="/analyse/api.js"></script>
 <script src="/analyse/insights.js"></script>
+<script src="/analyse/stream.js"></script>
 <script src="/analyse/outputs.js"></script>
 <script src="/analyse/compare.js"></script>
 <script src="/analyse/analyse.js"></script>

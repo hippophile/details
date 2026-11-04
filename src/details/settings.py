@@ -91,6 +91,8 @@ class Llm:
     max_tokens_notes: int
     max_tokens_checklist: int
     max_tokens_tags: int
+    stream: bool                  # show the reply token by token (LM Studio streaming); validation still runs at the end
+    stream_idle_timeout_s: float  # a streamed call fails after this long without bytes (the reply may take long)
 
     def max_tokens(self, kind):
         return getattr(self, f"max_tokens_{kind}")
@@ -188,6 +190,8 @@ def _v_llm(s):
         raise ValueError("llm.chars_per_token: must be > 0")
     if s.timeout_s <= 0:
         raise ValueError("llm.timeout_s: must be > 0")
+    if s.stream_idle_timeout_s <= 0:
+        raise ValueError("llm.stream_idle_timeout_s: must be > 0")
 
 
 # section name -> (dataclass, validation hook). Later changes add a section here + a [section] in config.toml.

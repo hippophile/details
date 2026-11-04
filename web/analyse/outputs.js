@@ -121,6 +121,7 @@
     };
     watching = { id: jobId, timer: setInterval(poll, 1500) };
     if (window.Insights) window.Insights.attach($("aiInsightsHost"), jobId);
+    if (window.LiveStream) window.LiveStream.attach(jobId);
     $("aiCancel").hidden = false;
     syncStart();
     poll();
@@ -128,6 +129,7 @@
   function stopWatch() {
     if (watching) clearInterval(watching.timer);
     watching = null;
+    if (window.LiveStream) window.LiveStream.detach();
     $("aiCancel").hidden = true;
     $("aiStatus").textContent = "";
     syncStart();

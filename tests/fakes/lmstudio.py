@@ -1,6 +1,6 @@
 """FakeLMStudio (a Transport that records calls and answers from recorded `lms` JSON) and FakeMemInfo.
 HTTP mode (`await fake.start_http()` -> base url) also speaks POST /v1/chat/completions with scripted replies."""
-import collections, copy, json, pathlib
+import asyncio, collections, copy, json, pathlib, time
 
 from aiohttp import web
 
@@ -24,6 +24,7 @@ class FakeLMStudio:
         self.calls = []
         self.requests, self.replies, self.responder = [], collections.deque(), None     # HTTP mode
         self._runner, self.url = None, None
+        self.disconnects, self.disconnected, self.disconnect_at = 0, asyncio.Event(), None
 
     def _need_up(self):
         if not self.up:
@@ -96,6 +97,9 @@ class FakeLMStudio:
         if "status" in reply:
             return web.json_response({"error": reply.get("error", "scripted error")}, status=reply["status"])
         text = reply["content"]
+        opts = reply.get("stream") or {}
+        if body.get("stream") and not opts.get("plain"):
+            return await self._stream(request, body, reply, text, opts)
         prompt = sum(len(m.get("content", "")) for m in body.get("messages", []))
         message = {"role": "assistant", "content": text}
         if "reasoning_content" in reply:
@@ -103,7 +107,71 @@ class FakeLMStudio:
         return web.json_response({
             "id": "chatcmpl-fake", "object": "chat.completion", "model": body.get("model"),
             "choices": [{"index": 0, "message": message, "finish_reason": reply.get("finish_reason", "stop")}],
-            "usage": reply.get("usage", {"prompt_tokens": prompt // 4 + 1, "completion_tokens": len(text) // 4 + 1})})
+            "usage": reply.get("usage", {"prompt_tokens": prompt // 4 + 1, "completion_tokens": len(text) // 4 + 1})},
+            content_type=opts.get("content_type", "application/json"))
+
+    async def _stream(self, request, body, reply, text, opts):
+        prompt = sum(len(m.get("content", "")) for m in body.get("messages", []))
+        pieces = opts.get("pieces") or [text[i:i + 6] for i in range(0, len(text), 6)]
+        delay = opts.get("delay", 0)
+        resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"})
+        await resp.prepare(request)
+
+        def chunk(delta=None, finish=None, **extra):
+            ch = {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": body.get("model"),
+                  "choices": [{"index": 0, "delta": delta or {}, "finish_reason": finish}], **extra}
+            return ("data: " + json.dumps(ch, ensure_ascii=False) + "\n\n").encode()
+
+        async def send(b):
+            try:
+                if request.transport is None or request.transport.is_closing():
+                    raise ConnectionResetError("client gone")
+                await resp.write(b)
+            except (ConnectionResetError, ConnectionError):
+                self.disconnects += 1
+                self.disconnect_at = time.monotonic()
+                self.disconnected.set()
+                raise
+        try:
+            if "raw" in opts:
+                for part in ([opts["raw"]] if isinstance(opts["raw"], bytes) else opts["raw"]):
+                    await send(part)
+                    await asyncio.sleep(opts.get("delay", 0.01))
+                await resp.write_eof()
+                return resp
+            await send(b": fake lm studio\n\n")
+            first = True
+            for r in opts.get("reasoning", []):
+                await send(chunk({"role": "assistant", "reasoning_content": r}))
+            for n, piece in enumerate(pieces):
+                if "drop_after" in opts and n >= opts["drop_after"]:
+                    return resp
+                if "stall_after" in opts and n >= opts["stall_after"]:
+                    while request.transport is not None and not request.transport.is_closing():
+                        await asyncio.sleep(0.02)
+                    await send(b"x")             # raises: the client closed the socket
+                if delay:
+                    await asyncio.sleep(delay)
+                await send(chunk({"role": "assistant", "content": piece} if first else {"content": piece}))
+                first = False
+            if opts.get("error"):
+                await send(("data: " + json.dumps({"error": {"message": opts["error"]}}) + "\n\n").encode())
+                return resp
+            await send(chunk({}, reply.get("finish_reason", "stop")))
+            if (body.get("stream_options") or {}).get("include_usage") and not opts.get("no_usage"):
+                usage = reply.get("usage", {"prompt_tokens": prompt // 4 + 1, "completion_tokens": len(text) // 4 + 1})
+                await send(("data: " + json.dumps({"id": "chatcmpl-fake", "choices": [], "usage": usage}) + "\n\n").encode())
+            await send(b"data: [DONE]\n\n")
+            await resp.write_eof()
+        except (ConnectionResetError, ConnectionError):
+            pass                                    # already counted in send()
+        except asyncio.CancelledError:              # aiohttp cancels the handler when the client goes away
+            if not self.disconnected.is_set():
+                self.disconnects += 1
+                self.disconnect_at = time.monotonic()
+                self.disconnected.set()
+            raise
+        return resp
 
 
 class FakeMemInfo:

@@ -51,6 +51,8 @@ max_tokens_debrief = 2000
 max_tokens_notes = 2000
 max_tokens_checklist = 1500
 max_tokens_tags = 400
+stream = true
+stream_idle_timeout_s = 60
 """
 
 
@@ -159,3 +161,14 @@ def test_run_insights_settings_defaults_env_and_validation(cfg):
         load_settings(cfg, env={"DETAILS_RUNNER_LOG_MAX_LINES": "0"}, dotenv_path=None)
     with pytest.raises(SettingsError, match="unload_on_terminal"):
         load_settings(cfg, env={"DETAILS_LMSTUDIO_UNLOAD_ON_TERMINAL": "maybe"}, dotenv_path=None)
+
+
+def test_llm_stream_settings_defaults_env_and_validation(cfg):
+    s = load_settings(cfg, env={}, dotenv_path=None)
+    assert s.llm.stream is True and s.llm.stream_idle_timeout_s == 60
+    s = load_settings(cfg, env={"DETAILS_LLM_STREAM": "false", "DETAILS_LLM_STREAM_IDLE_TIMEOUT_S": "5"}, dotenv_path=None)
+    assert s.llm.stream is False and s.llm.stream_idle_timeout_s == 5
+    with pytest.raises(SettingsError, match="stream_idle_timeout_s"):
+        load_settings(cfg, env={"DETAILS_LLM_STREAM_IDLE_TIMEOUT_S": "0"}, dotenv_path=None)
+    with pytest.raises(SettingsError, match=r"llm\.stream"):
+        load_settings(cfg, env={"DETAILS_LLM_STREAM": "maybe"}, dotenv_path=None)
