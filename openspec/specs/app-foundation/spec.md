@@ -1,7 +1,7 @@
 # app-foundation Specification
 
 ## Purpose
-TBD - created by archiving change v2-foundation. Update Purpose after archive.
+The shared base of detAIls v2: package layout, nested settings from config.toml and env, async PostgreSQL pool and migrations, localhost-only security, page routes and the preserved v1 live page.
 
 ## Requirements
 

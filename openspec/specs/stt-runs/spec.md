@@ -1,7 +1,7 @@
 # stt-runs Specification
 
 ## Purpose
-TBD - created by archiving change stt-runs. Update Purpose after archive.
+Transcribe a recording with a chosen speech model as a resumable job and show every kept run with its model, wall time and real-time factor on the Analyse page.
 
 ## Requirements
 

@@ -1,7 +1,7 @@
 # recording Specification
 
 ## Purpose
-TBD - created by archiving change recording-capture. Update Purpose after archive.
+Record a meeting from the mic on the Record page into a crash-safe WAV that becomes a lossless FLAC master, with test scripts, a level meter and recovery after a crash.
 
 ## Requirements
 

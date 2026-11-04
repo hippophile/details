@@ -1,7 +1,7 @@
 # model-registry Specification
 
 ## Purpose
-TBD - created by archiving change jobs-and-models. Update Purpose after archive.
+Describe every speech and AI model in models.toml, so adding a model is configuration, and report which ones are installed and reachable.
 
 ## Requirements
 

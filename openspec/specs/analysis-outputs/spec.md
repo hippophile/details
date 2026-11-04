@@ -1,7 +1,7 @@
 # analysis-outputs Specification
 
 ## Purpose
-TBD - created by archiving change llm-outputs. Update Purpose after archive.
+Turn a finished transcript into validated, quote-checked AI outputs (debrief, notes, checklist, tags) with a local LM Studio model, and show, tick and export them on the Analyse page.
 
 ## Requirements
 

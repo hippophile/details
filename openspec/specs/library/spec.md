@@ -1,7 +1,7 @@
 # library Specification
 
 ## Purpose
-TBD - created by archiving change library-page. Update Purpose after archive.
+List, search, play, rename, trash, restore, purge and import recordings, so the user can pick one to analyse.
 
 ## Requirements
 

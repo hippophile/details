@@ -1,7 +1,7 @@
 # job-runner Specification
 
 ## Purpose
-TBD - created by archiving change jobs-and-models. Update Purpose after archive.
+Run long work as queued jobs of ordered steps on one GPU worker, with checkpoints, resume after restart, cancel, retry, live progress over SSE and LM Studio model load/unload.
 
 ## Requirements
 

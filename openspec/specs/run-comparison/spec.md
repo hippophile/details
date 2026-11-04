@@ -1,7 +1,7 @@
 # run-comparison Specification
 
 ## Purpose
-TBD - created by archiving change compare-runs. Update Purpose after archive.
+Compare two runs of the same recording side by side: transcript word diff, timings, AI outputs and, when a script exists, word error rate.
 
 ## Requirements
 
