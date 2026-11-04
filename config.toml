@@ -55,6 +55,7 @@ chunk_tokens = 8000               # estimated tokens per chunk (estimate, not me
 chunk_overlap_tokens = 200        # whole segments repeated at the start of the next chunk
 chars_per_token = 2.5             # estimate for Greek, not measured; real usage.prompt_tokens is stored per run
 timeout_s = 900                   # one chat call
+temperature = 0.1                 # AI sampling temperature, 0..2 (0 = most repeatable)
 max_tokens_debrief = 2000
 max_tokens_notes = 2000
 max_tokens_checklist = 1500

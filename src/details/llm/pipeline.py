@@ -150,7 +150,7 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
         return KindResult(attempts, content, "single", 1, 0, v, u, _sum(attempts))
 
     chunks = split_segments(segments, min(llm.chunk_tokens, room), llm.chunk_overlap_tokens, llm.chars_per_token)
-    params = {"temperature": 0.1, "max_tokens": max_tokens, "language": language}
+    params = {"temperature": llm.temperature, "max_tokens": max_tokens, "language": language}
     total = len(chunks) + (1 if kind in REDUCE and len(chunks) > 1 else 0)
     contents, hits, calls = [], 0, []
     first_prompt = prompt("\n".join(chunks[0]))[0]["content"]

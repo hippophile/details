@@ -208,7 +208,8 @@ def test_one_death_is_survived_by_the_restart(tmp_path, monkeypatch):
 
 
 def test_partial_is_dropped_while_the_worker_is_busy_and_the_commit_is_not_delayed(tmp_path, monkeypatch):
-    monkeypatch.setenv("LIVE_FAKE_REPLY_DELAY", "0.8")
+    delay = 1.5   # > the 0.8 s partial cadence, so a partial is always due while the worker is busy (0.8 was flaky)
+    monkeypatch.setenv("LIVE_FAKE_REPLY_DELAY", str(delay))
     async def go():
         e = live_env(tmp_path, monkeypatch)
         live, m = await begin(e, tmp_path)
@@ -217,10 +218,10 @@ def test_partial_is_dropped_while_the_worker_is_busy_and_the_commit_is_not_delay
         await feed(live, Writer(), script_pcm(("t", 1.0), ("s", 0.8), ("t", 4.0)))
         await wait_until(lambda: m.of("live_commit"), 10, "commit")
         took = time.monotonic() - t0
-        assert live.partials_dropped >= 1
+        await wait_until(lambda: live.partials_dropped >= 1, 10, "a dropped partial")
         kinds = [c["kind"] for c in read_calls(e.calls)]
         assert kinds.count("commit") >= 1
-        assert took < 0.8 * 3 + 1.0                                   # not stuck behind a queue of partials
+        assert took < delay * 3 + 1.0                                 # not stuck behind a queue of partials
         await live.close(1.0)
     run(go())
 

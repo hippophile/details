@@ -20,7 +20,7 @@ async def chat(settings, *, model, kind, schema, messages, max_tokens):
     secrets = secrets_from(settings)
     base = settings.lmstudio.url.rstrip("/")
     shown = redact(base, secrets)                                    # the URL may carry credentials
-    body = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": max_tokens,
+    body = {"model": model, "messages": messages, "temperature": settings.llm.temperature, "max_tokens": max_tokens,
             "reasoning_effort": "none", "stream": False,
             "response_format": {"type": "json_schema", "json_schema": {"name": kind, "strict": True, "schema": schema}}}
     t0 = time.monotonic()
@@ -93,7 +93,7 @@ async def chat_stream(settings, *, model, kind, schema, messages, max_tokens, on
     secrets = secrets_from(settings)
     base = settings.lmstudio.url.rstrip("/")
     shown = redact(base, secrets)
-    body = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": max_tokens,
+    body = {"model": model, "messages": messages, "temperature": settings.llm.temperature, "max_tokens": max_tokens,
             "reasoning_effort": "none", "stream": True, "stream_options": {"include_usage": True},
             "response_format": {"type": "json_schema", "json_schema": {"name": kind, "strict": True, "schema": schema}}}
     idle = settings.llm.stream_idle_timeout_s
