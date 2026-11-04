@@ -85,6 +85,7 @@ function setUi(on) {
   b.textContent = on ? "Stop" : "Mic on";
   b.disabled = false;
   $("title").disabled = on;
+  $("liveToggle").disabled = on;
 }
 function resetMeter() {
   level = MIN_DB; $("bar").style.width = "0"; $("levelText").textContent = "mic off"; $("dead").hidden = true;
@@ -130,8 +131,9 @@ function connect(first) {
   ws.onopen = () => {
     if (first) {
       const sel = scripts[activeTab];
-      ws.send(JSON.stringify({ type: "start", title: $("title").value.trim() || defaultTitle(),
-                               script_id: sel ? sel.id : null, sample_rate: RATE }));
+      const msg = { type: "start", title: $("title").value.trim() || defaultTitle(), script_id: sel ? sel.id : null, sample_rate: RATE };
+      if ($("liveToggle").checked) { msg.live = true; msg.silence_db = threshold(); }
+      ws.send(JSON.stringify(msg));
     } else {
       ws.send(JSON.stringify({ type: "resume", recording_id: recId }));
     }
@@ -158,6 +160,8 @@ function onMessage(m) {
     stopping = "done"; finish(); $("status").textContent = "Too short (under 0.5 s) - nothing saved.";
   } else if (m.type === "error") {
     fail(m.message);
+  } else if (m.type.startsWith("live_") && window.RecordLive) {
+    window.RecordLive.onMessage(m);      // live text/notes never touch capture or sending
   }
 }
 
@@ -174,6 +178,7 @@ async function start() {
   showError(""); $("bufwarn").hidden = true; $("saved").hidden = true;
   blocks = 0; clips = 0; quiet = 0; queue = []; recId = null; ready = false; stopping = false;
   $("timer").textContent = "00:00"; $("clips").textContent = "0 clips"; $("clips").classList.remove("hit");
+  window.RecordLive.reset();
   ctx = new AudioContext({ sampleRate: RATE });
   if (ctx.sampleRate !== RATE) {
     const got = ctx.sampleRate; closeAudio();
@@ -214,6 +219,7 @@ $("mic").onclick = () => {
   $("mic").disabled = true;
   start().catch(err => { closeAudio(); setUi(false); showError(err.message || String(err)); });
 };
+$("liveToggle").onchange = () => window.RecordLive.show($("liveToggle").checked);
 $("again").onclick = () => {
   $("saved").hidden = true; $("timer").textContent = "00:00"; $("title").value = ""; $("title").disabled = false;
   $("clips").textContent = "0 clips"; $("clips").classList.remove("hit"); $("status").textContent = "Press Mic on and read a script below.";

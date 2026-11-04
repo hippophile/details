@@ -100,6 +100,24 @@ class Llm:
 
 
 @dataclass(frozen=True)
+class Live:
+    """Live assist on /record. Every key has a default so a config.toml without [live] still loads."""
+    stt_model: str = "whisper-turbo"      # models.toml [stt.<id>]; must be an installed `fast` model (checked per session)
+    llm_model: str = "gemma-cheap"        # models.toml [llm.<id>]; must have role `cheap` (checked per session)
+    language: str = "el"
+    notes_every_min: float = 2.0          # rolling notes interval (0.5 to 30)
+    partials: bool = True                 # grey partial line while talking
+    max_backlog_s: float = 60.0           # live audio queued for the speech worker; older audio is dropped (never the WAV)
+    max_transcript_tokens: int = 4000     # newest live transcript sent to the notes model (estimate, not measured)
+    llm_timeout_s: float = 90.0           # one notes call (and one model load)
+    stt_timeout_s: float = 30.0           # one speech reply, after the worker said ready
+    stt_load_timeout_s: float = 120.0     # cold start of the speech worker (model load)
+    vocab_hint: bool = False              # pass stt.vocab_hint to Whisper
+    test_mode: bool = False               # tests only: allows test_interval_s
+    test_interval_s: float = 0.0          # tests only (needs test_mode): notes interval in seconds, bypasses the 0.5 min floor
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
@@ -111,6 +129,7 @@ class Settings:
     runner: Runner
     stt: Stt
     llm: Llm
+    live: Live
     import_: Import   # config section [import]; trailing underscore because `import` is a keyword
 
 
@@ -170,6 +189,26 @@ def _v_runner(s):
         raise ValueError("runner.log_max_lines: must be > 0")
 
 
+def _v_live(s):
+    if not s.stt_model:
+        raise ValueError("live.stt_model: must not be empty")
+    if not s.llm_model:
+        raise ValueError("live.llm_model: must not be empty")
+    if not s.language:
+        raise ValueError("live.language: must not be empty")
+    if not 0.5 <= s.notes_every_min <= 30:
+        raise ValueError("live.notes_every_min: must be between 0.5 and 30")
+    if s.max_backlog_s <= 0:
+        raise ValueError("live.max_backlog_s: must be > 0")
+    if s.max_transcript_tokens < 100:
+        raise ValueError("live.max_transcript_tokens: must be >= 100")
+    for k in ("llm_timeout_s", "stt_timeout_s", "stt_load_timeout_s"):
+        if getattr(s, k) <= 0:
+            raise ValueError(f"live.{k}: must be > 0")
+    if s.test_interval_s < 0 or (s.test_interval_s and not s.test_mode):
+        raise ValueError("live.test_interval_s: only allowed with live.test_mode = true (tests)")
+
+
 def _v_import(s):
     if s.max_mb <= 0:
         raise ValueError("import.max_mb: must be > 0")
@@ -200,7 +239,7 @@ SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
             "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
             "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import),
             "models": (Models, _v_models), "runner": (Runner, _v_runner),
-            "stt": (Stt, _v_stt), "llm": (Llm, _v_llm)}
+            "stt": (Stt, _v_stt), "llm": (Llm, _v_llm), "live": (Live, _v_live)}
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],

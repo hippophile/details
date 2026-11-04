@@ -40,7 +40,8 @@ def _out(row, registry, with_text=False):
          for k, v in row.items()}
     m = registry.stt.get(r["model_id"])
     r["model_label"] = m.label if m else r["model_id"]
-    r["label"] = run_label(r["n"], r["model_label"], r["status"], r["wall_ms"], r["rtf"])
+    live = " (live preview)" if (r.get("settings") or {}).get("live_preview") else ""     # live-assistant
+    r["label"] = run_label(r["n"], r["model_label"] + live, r["status"], r["wall_ms"], r["rtf"])
     return r
 
 

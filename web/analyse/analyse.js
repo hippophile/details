@@ -1,6 +1,6 @@
 // Analyse page: recording header + player, New run, progress (SSE with polling fallback), runs list, transcript.
 (function () {
-  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el } = window.AnalyseApi;
+  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun } = window.AnalyseApi;
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
   const player = $("player"), modelSel = $("model"), startBtn = $("start"), reason = $("reason");
@@ -192,7 +192,7 @@
     } catch (e) { $("recTitle").textContent = "Recording not found"; $("newRun").hidden = true; say(e.message, true); return; }
     try { await loadModels(); } catch (e) { reason.textContent = "Could not load models: " + e.message; startBtn.disabled = true; }
     try { await loadRuns(); } catch (e) { say("Could not load runs: " + e.message, true); }
-    const done = runs.find((r) => r.status === "done");
+    const done = pickRun(runs);
     if (done && !watching) select(done);
   }
   boot();

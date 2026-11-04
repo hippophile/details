@@ -1,0 +1,19 @@
+/* Live assist card on /record. Uses the shared tokens; no new colours. */
+.chk { display:inline-flex; align-items:center; gap:8px; font-size:15px; color:var(--fg); cursor:pointer; }
+.chk input { width:18px; height:18px; accent-color:var(--accent); }
+.chk input:disabled { cursor:not-allowed; }
+.chk:has(input:disabled) { color:var(--muted); cursor:not-allowed; }
+#live h3 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 6px; }
+#liveStatus { font-size:13px; color:var(--muted); display:grid; gap:2px; margin-bottom:10px; }
+#liveStatus .lbl { font-weight:600; color:var(--fg); }
+#liveStatus .warn { color:var(--warn); }
+#liveStatus .error { color:var(--bad); }
+.livelines { max-height:220px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:8px 10px; min-height:44px; }
+.livelines .line { margin:0 0 6px; font-size:16px; }
+.livepartial { min-height:22px; padding:4px 10px 0; color:var(--muted); font-style:italic; font-size:16px; }
+.livegrid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin-top:12px; }
+@media (max-width: 640px) { .livegrid { grid-template-columns:1fr; } }
+.livegrid ul { margin:0; padding-left:18px; font-size:15px; }
+.livegrid li { margin-bottom:4px; overflow-wrap:anywhere; }
+.livegrid .owner { color:var(--muted); }
+.livegrid .unv { color:var(--warn); font-size:12px; font-weight:600; border:1px solid var(--warn); border-radius:999px; padding:0 6px; white-space:nowrap; }

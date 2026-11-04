@@ -3,6 +3,7 @@ import asyncio, json, logging, uuid
 
 from aiohttp import WSMsgType, web
 
+from ..live.session import LIVE
 from ..services import recordings, scripts
 
 log = logging.getLogger("details.record")
@@ -16,9 +17,18 @@ def add_record_routes(app, settings, pool_key):
         rows = await scripts.list_scripts(request.app[pool_key])
         return web.json_response(rows)
 
+    async def close_live(sess):
+        """End live assist (kill the child, release the GPU lease) within its own short deadline. Never raises."""
+        if sess.live is not None:
+            try:
+                await sess.live.close()
+            except Exception:
+                log.exception("closing live assist failed for %s", sess.id)
+
     async def grace_expiry(sess):
         try:
             await asyncio.sleep(settings.record.grace_s)
+            await close_live(sess)
             await recordings.finalize(app[pool_key], settings, sess, interrupted=True)
         except asyncio.CancelledError:
             raise
@@ -38,8 +48,16 @@ def add_record_routes(app, settings, pool_key):
             async for msg in ws:
                 if msg.type == WSMsgType.BINARY:
                     if sess and sess.state == "recording":
+                        live = sess.live
+                        before = sess.writer.frames if live is not None else 0
                         await asyncio.to_thread(sess.writer.write, msg.data) if len(msg.data) > 65536 \
                             else sess.writer.write(msg.data)
+                        if live is not None and not live.failed:      # after the write; a bug here only ends live
+                            try:
+                                live.offer(msg.data, before)
+                            except Exception as e:
+                                log.exception("live offer raised for %s; live is off", sess.id)
+                                live.mark_failed(e)
                     continue
                 if msg.type != WSMsgType.TEXT:
                     continue
@@ -59,6 +77,14 @@ def add_record_routes(app, settings, pool_key):
                     sess.attached = True
                     app[SESSIONS][sess.id] = sess
                     await ws.send_json({"type": "ready", "recording_id": sess.id})
+                    if m.get("live") is True and LIVE in app:
+                        try:
+                            sess.live = app[LIVE].begin(sess, m.get("silence_db"))
+                            sess.live.attach(ws.send_json)
+                        except Exception:
+                            log.exception("live assist could not start for %s", sess.id)
+                            await ws.send_json({"type": "live_state", "state": "failed",
+                                                "message": "Live assist could not start. Recording continues"})
                 elif kind == "resume" and sess is None:
                     try:
                         found = app[SESSIONS].get(str(uuid.UUID(str(m.get("recording_id")))))
@@ -76,9 +102,12 @@ def add_record_routes(app, settings, pool_key):
                             found.grace_task = None
                         found.state, found.attached, sess = "recording", True, found
                         await ws.send_json({"type": "ready", "recording_id": found.id})
+                        if found.live is not None:
+                            found.live.attach(ws.send_json, resume=True)
                 elif kind == "gap" and sess:
                     sess.gaps.append({"ms": m.get("ms"), "at_frames": sess.writer.frames})
                 elif kind == "stop" and sess:
+                    await close_live(sess)
                     res = await recordings.finalize(pool, settings, sess)
                     sess.attached = False
                     if res is None:
@@ -90,6 +119,8 @@ def add_record_routes(app, settings, pool_key):
                 else:
                     await err("unexpected message")
         finally:
+            if sess is not None and sess.live is not None:
+                sess.live.detach()
             if sess is not None and sess.state == "recording":
                 sess.state, sess.attached = "interrupted", False
                 sess.writer.sync()

@@ -17,6 +17,7 @@ from .api.recordings import add_recordings_routes
 from .api.stt_runs import add_stt_runs_routes
 from .db import open_pool
 from .llm.lmstudio_ctl import CliTransport, Controller
+from .live.session import LIVE, LiveManager
 from .llm.stream_hub import StreamHub
 from .migrate import MIGRATIONS_DIR, check_pending
 from .runner.joblog import JobLogs
@@ -28,7 +29,7 @@ from .security import local_only
 from .services import recordings, scripts, stt_runs, trash
 from .services.jobs import JobService
 from .services.models import load_registry, resolve_path
-from .settings import REPO_ROOT, Settings
+from .settings import REPO_ROOT, Settings, SettingsError
 
 BIND_HOST = "127.0.0.1"
 PAGES = ("record", "library", "analyse", "prompts")
@@ -41,10 +42,22 @@ JOBLOGS = web.AppKey("joblogs", JobLogs)
 STEP_MODULES = ("details.runner.steps_stt", "details.runner.steps_analyse")   # owned by stt-runs / llm-outputs
 
 
+def check_live_models(settings, registry):
+    """Startup: the models named in [live] must exist with the right kind. Their roles are checked per session
+    (a big LLM or the large Whisper is refused with a message, never loaded)."""
+    live = settings.live
+    if live.llm_model not in registry.llm:
+        raise SettingsError(f"live.llm_model: '{live.llm_model}' is not an LLM in models.toml"
+                            + (" (it is a speech model)" if live.llm_model in registry.stt else ""))
+    if live.stt_model not in registry.stt:
+        raise SettingsError(f"live.stt_model: '{live.stt_model}' is not a speech model in models.toml"
+                            + (" (it is an LLM)" if live.stt_model in registry.llm else ""))
+
+
 def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(), step_registry=None,
-               lm_transport=None, meminfo=None):
+               lm_transport=None, meminfo=None, live_clock=None):
     """hooks: async callables(app) run in order after the migration check (recovery, seed sync, purge, ...).
-    step_registry / lm_transport / meminfo: injection points for tests (defaults: the real ones)."""
+    step_registry / lm_transport / meminfo / live_clock: injection points for tests (defaults: the real ones)."""
     web_dir = pathlib.Path(web_dir or REPO_ROOT / "web")
     app = web.Application(middlewares=[local_only])
     app[SETTINGS] = settings
@@ -75,8 +88,10 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_record_routes(app, settings, POOL)
     add_recordings_routes(app, settings, POOL)
     registry = load_registry(resolve_path(settings))
+    check_live_models(settings, registry)
     ctl = Controller(lm_transport or CliTransport(settings))
     memory = MemoryManager(ctl, registry, settings, meminfo or VmStatMemInfo())
+    app[LIVE] = LiveManager(settings, registry, lease, memory, clock=live_clock)   # takes the ONE shared lease
     if step_registry is None:
         step_registry = default_steps
         for mod in STEP_MODULES:      # absent until those changes land
@@ -136,6 +151,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
             raise
 
     async def cleanup(app):
+        await app[LIVE].close_all()          # kills the speech child, releases the GPU lease, unloads the notes model
         if RUNNER in app:
             await app[RUNNER].stop()
         if PURGE_TASK in app:

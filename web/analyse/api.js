@@ -27,7 +27,12 @@
     if (text != null) e.textContent = text;
     return e;
   }
-  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el };
+  // The run Analyse opens first: the first done run that is not a live preview (live-assistant), else the first done run.
+  function pickRun(runs) {
+    const done = runs.filter((r) => r.status === "done");
+    return done.find((r) => !(r.settings && r.settings.live_preview)) || done[0];
+  }
+  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun };
   if (typeof module !== "undefined" && module.exports) module.exports = out;
   else window.AnalyseApi = out;
 })();

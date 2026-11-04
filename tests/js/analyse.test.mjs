@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { fmtClock, seekTo, isActivateKey, fmtWall } = createRequire(import.meta.url)("../../web/analyse/api.js");
+const { fmtClock, seekTo, isActivateKey, fmtWall, pickRun } = createRequire(import.meta.url)("../../web/analyse/api.js");
 
 test("fmtClock renders mm:ss and h:mm:ss", () => {
   assert.equal(fmtClock(65000), "01:05");
@@ -31,4 +31,19 @@ test("Enter and Space activate a row, other keys do not", () => {
 test("fmtWall", () => {
   assert.equal(fmtWall(9700), "9.7 s");
   assert.equal(fmtWall(125000), "2:05");
+});
+
+test("pickRun prefers the first done run that is not a live preview", () => {
+  const live = { id: "a", status: "done", settings: { live_preview: true } };
+  const full = { id: "b", status: "done", settings: {} };
+  const old = { id: "c", status: "done" };
+  assert.equal(pickRun([live, full, old]).id, "b");
+  assert.equal(pickRun([live, { id: "r", status: "running" }, old]).id, "c");
+});
+
+test("pickRun falls back to a live preview when it is the only done run, and to nothing", () => {
+  const live = { id: "a", status: "done", settings: { live_preview: true } };
+  assert.equal(pickRun([{ id: "q", status: "queued" }, live]).id, "a");
+  assert.equal(pickRun([{ id: "q", status: "failed" }]), undefined);
+  assert.equal(pickRun([]), undefined);
 });

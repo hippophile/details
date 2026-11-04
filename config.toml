@@ -61,3 +61,16 @@ max_tokens_checklist = 1500
 max_tokens_tags = 400
 stream = true                     # DETAILS_LLM_STREAM: replies are streamed so the page shows them as they are written
 stream_idle_timeout_s = 60        # a streamed call fails after this long without any bytes (replaces timeout_s for it)
+
+[live]                            # Live assist on /record (DETAILS_LIVE_<KEY>); models are ids from models.toml
+stt_model = "whisper-turbo"       # must be an installed `fast` speech model (the large model is refused in live mode)
+llm_model = "gemma-cheap"         # must have role `cheap`: the 26B is never loaded while recording
+language = "el"
+notes_every_min = 2               # rolling notes/action items/tags every N minutes (0.5 to 30)
+partials = true                   # grey partial line while talking
+max_backlog_s = 60                # live audio waiting for the speech worker; older live audio is dropped, never the WAV
+max_transcript_tokens = 4000      # newest transcript sent to the notes model (estimate, not measured; E4B context is 8192)
+llm_timeout_s = 90                # one notes call (and one model load)
+stt_timeout_s = 30                # one speech reply (after the worker said ready)
+stt_load_timeout_s = 120          # cold start of the speech worker
+vocab_hint = false                # send [stt] vocab_hint to Whisper

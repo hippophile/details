@@ -1,0 +1,3 @@
+# Dev/test-only packages (the app itself needs only requirements.txt).
+-r requirements.txt
+playwright    # tests/e2e: drives the installed Brave (tests/brave-playwright.json); no browser download needed

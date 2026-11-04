@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Record</title>
 <link rel="stylesheet" href="/shared/shared.css">
+<link rel="stylesheet" href="/record/live.css">
 <style>
   input[type=text] { font-size:16px; padding:8px 10px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); width:100%; }
   input[type=text]:disabled { opacity:.6; }
@@ -43,6 +44,10 @@
       <div id="timer" aria-live="off">00:00</div>
       <button class="btn" id="mic">Mic on</button>
     </div>
+    <div class="row" style="margin-top:10px">
+      <label class="chk"><input type="checkbox" id="liveToggle"> Live assist</label>
+      <span class="hint" style="margin:0">Live text and rolling notes while you record (Whisper turbo + Gemma E4B; queued jobs wait). Choose before Mic on. Just testing speech? The <a href="/live">v1 live page</a> is still there.</span>
+    </div>
     <div id="status" style="margin-top:8px">Press Mic on and read a script below.</div>
     <div class="err" id="error" role="alert" hidden></div>
   </div>
@@ -60,7 +65,20 @@
     </div>
     <div class="warn" id="dead" role="alert" hidden>No signal - is the mic muted?</div>
     <div class="warn" id="bufwarn" role="alert" hidden>Connection lost for a long time: the oldest audio was dropped.</div>
-    <div class="hint">Keep the Mac awake while recording - sleep or lid-close silently drops audio. Want live text while you talk? Use the <a href="/live">v1 live page</a>.</div>
+    <div class="hint">Keep the Mac awake while recording - sleep or lid-close silently drops audio.</div>
+  </div>
+
+  <div class="card" id="live" hidden>
+    <h2>Live</h2>
+    <div id="liveStatus" aria-live="polite"></div>
+    <div id="liveLines" class="livelines"></div>
+    <div id="livePartial" class="livepartial"></div>
+    <div class="livegrid">
+      <div><h3>Notes</h3><ul id="liveNotes"></ul></div>
+      <div><h3>Action items</h3><ul id="liveActions"></ul></div>
+      <div><h3>Tags</h3><ul id="liveTags"></ul></div>
+    </div>
+    <div class="hint" id="liveUpdated"></div>
   </div>
 
   <div class="card" id="saved" hidden>
@@ -82,6 +100,7 @@
   </div>
 </main>
 <script src="/shared/nav.js"></script>
+<script src="/record/live.js"></script>
 <script src="/record/record.js"></script>
 </body>
 </html>
