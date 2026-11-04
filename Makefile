@@ -3,7 +3,7 @@ PYS := .venv/bin/python
 AUDIO ?= sessions/my_take.wav
 MODELS ?=
 
-.PHONY: setup run record score test migrate prompts
+.PHONY: setup run record score test test-js migrate prompts
 
 setup:            ## one-time: ffmpeg + Python 3.12 venv + packages + Whisper models (~4.6 GB)
 	@command -v ffmpeg >/dev/null || brew install ffmpeg
@@ -28,3 +28,6 @@ score:            ## score a take against eval/script_meeting_el_en.md
 
 test:             ## pytest, excluding -m gpu
 	$(PY) -m pytest -q tests
+
+test-js:          ## node --test tests/js (also run by `make test` through pytest; prints SKIP if node is missing)
+	@if command -v node >/dev/null; then node --test tests/js; else echo "SKIP: node not found, JS diff tests not run"; fi

@@ -1,0 +1,41 @@
+/* Compare view. Uses the shared tokens (light/dark); marks are never colour only. */
+body.comparing main { max-width:1100px; }
+body.comparing #newRun, body.comparing #progress, body.comparing #aiSlot, body.comparing #aiResults,
+body.comparing #transcriptCard, body.comparing #runs, body.comparing #runsEmpty { display:none; }
+.compare-row { margin-top:10px; }
+.compare-row .btn { margin-top:0; }
+#compareHint:empty { display:none; }
+input.cmp-tick { width:18px; height:18px; flex:none; }
+input.cmp-tick:disabled { opacity:.45; }
+.analysis input.cmp-tick { margin-right:2px; }
+.cmp-top h2 { margin:0; flex:1 1 auto; }
+.warn-line { margin:10px 0; padding:8px 12px; border:1px solid var(--warn); border-left-width:6px; border-radius:8px; font-weight:600; }
+#cmpEval { margin:10px 0; overflow-x:auto; }
+.evaltable { border-collapse:collapse; font-size:14px; width:100%; }
+.evaltable th, .evaltable td { border-bottom:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; overflow-wrap:anywhere; }
+.evaltable th[scope=row] { font-weight:400; color:var(--muted); }
+.evaltable td { font-variant-numeric:tabular-nums; }
+#cmpProgress:empty { display:none; }
+#cmpProgress { margin:6px 0 10px; }
+.panes { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+.pane { border:1px solid var(--line); border-radius:8px; min-width:0; }
+.pane-head { position:sticky; top:0; z-index:2; background:var(--card); border-bottom:1px solid var(--line); border-radius:8px 8px 0 0; padding:10px 12px; }
+.pane-title { font-weight:600; overflow-wrap:anywhere; }
+.speed { height:8px; border-radius:5px; background:var(--line); margin:3px 0 6px; overflow:hidden; }
+.speed > div { height:8px; background:var(--accent); }
+.pane-body { padding:10px 12px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
+.pane-body .out { white-space:normal; line-height:1.5; }
+.pane-body h3 { font-size:15px; margin:12px 0 4px; }
+.pane-body ul { margin:0 0 6px; padding-left:20px; }
+.pane-body ul.ckl, .pane-body ul.tagpills { list-style:none; padding-left:0; }
+.counts { font-weight:600; margin-bottom:8px; white-space:normal; }
+.counts.bad { color:var(--bad); }
+del.mark-del { text-decoration:line-through; background:rgba(210,60,60,.20); color:inherit; border-radius:3px; }
+ins.mark-ins { text-decoration:underline; text-underline-offset:3px; background:rgba(46,157,79,.22); color:inherit; border-radius:3px; }
+.cmp-toggle { display:none; gap:8px; margin-bottom:10px; }
+.cmp-toggle [aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#fff; }
+@media (max-width:700px) {
+  .panes { grid-template-columns:1fr; }
+  .panes.show-a #paneB, .panes.show-b #paneA { display:none; }
+  .cmp-toggle { display:flex; }
+}

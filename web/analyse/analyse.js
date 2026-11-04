@@ -126,6 +126,7 @@
       li.onkeydown = (ev) => { if (ev.target === li && isActivateKey(ev)) { ev.preventDefault(); select(r); } };
       ul.appendChild(li);
       if (window.Outputs) window.Outputs.decorate(li, r);
+      if (window.AnalyseCompare) window.AnalyseCompare.decorateRun(li, r);
     }
     if (window.Outputs) window.Outputs.setRuns(runs, selected);
     const live = runs.find((r) => (r.status === "queued" || r.status === "running") && r.job_id);

@@ -3,7 +3,7 @@ import asyncio, datetime, re, uuid
 
 from psycopg.types.json import Jsonb
 
-from . import library, recordings
+from . import comparison, library, recordings
 from .models import stt_installed
 
 V1_MODEL = "unknown (v1 import)"
@@ -136,12 +136,13 @@ async def delete_run(pool, run_id):
         return None
     async with pool.connection() as c:
         async with c.transaction():
-            row = await (await c.execute("SELECT status FROM stt_run WHERE id=%s FOR UPDATE", (rid,))).fetchone()
+            row = await (await c.execute("SELECT status, recording_id FROM stt_run WHERE id=%s FOR UPDATE", (rid,))).fetchone()
             if row is None:
                 return None
             if row["status"] in RUNNING:
                 return "busy"
             await c.execute("DELETE FROM stt_run WHERE id=%s", (rid,))
+            await comparison.prune_orphans(c, row["recording_id"])
     return "deleted"
 
 

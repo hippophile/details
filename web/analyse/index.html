@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="/analyse/analyse.css">
 <link rel="stylesheet" href="/analyse/outputs.css">
+<link rel="stylesheet" href="/analyse/compare.css">
 </head>
 <body>
 <nav id="nav" aria-label="Pages"></nav>
@@ -86,6 +87,37 @@
       <h2>Runs</h2>
       <ul id="runs" class="runs" aria-label="Runs"></ul>
       <div class="meta" id="runsEmpty" hidden>No runs yet. Pick a model above and press Start.</div>
+      <div class="row compare-row">
+        <button class="btn sm" id="compareBtn" type="button" disabled>Compare selected (0)</button>
+        <div class="meta" id="compareHint" role="status" aria-live="polite">Tick two runs to compare them.</div>
+      </div>
+    </div>
+
+    <div class="card" id="compareView" hidden>
+      <div class="row cmp-top">
+        <h2>Compare runs</h2>
+        <button class="btn sm ghost" id="cmpSwap" type="button">Swap A and B</button>
+        <button class="btn sm ghost" id="cmpClose" type="button">Close</button>
+      </div>
+      <div class="meta">Wall time is measured on this Mac; other apps running at the same time affect it.</div>
+      <div id="cmpWarnings" aria-live="polite"></div>
+      <div id="cmpEval"></div>
+      <div class="tabs" id="cmpTabs" role="tablist" aria-label="Compare"></div>
+      <div class="meta" id="cmpProgress" role="status" aria-live="polite"></div>
+      <div class="cmp-toggle" id="cmpToggle" role="group" aria-label="Which run to show">
+        <button class="btn sm ghost" type="button" data-side="a" aria-pressed="true">A</button>
+        <button class="btn sm ghost" type="button" data-side="b" aria-pressed="false">B</button>
+      </div>
+      <div id="cmpPanes" class="panes show-a">
+        <section class="pane" id="paneA" aria-label="Run A">
+          <div class="pane-head" id="cmpHeaderA"></div>
+          <div class="pane-body" id="bodyA"></div>
+        </section>
+        <section class="pane" id="paneB" aria-label="Run B">
+          <div class="pane-head" id="cmpHeaderB"></div>
+          <div class="pane-body" id="bodyB"></div>
+        </section>
+      </div>
     </div>
 
     <div class="card" id="transcriptCard">
@@ -107,6 +139,7 @@
 <script src="/shared/nav.js"></script>
 <script src="/analyse/api.js"></script>
 <script src="/analyse/outputs.js"></script>
+<script src="/analyse/compare.js"></script>
 <script src="/analyse/analyse.js"></script>
 </body>
 </html>

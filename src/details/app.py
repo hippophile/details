@@ -6,6 +6,7 @@ from aiohttp import web
 from psycopg_pool import AsyncConnectionPool
 
 from .api.analyses import add_analyses_routes
+from .api.comparisons import add_comparisons_routes
 from .api.jobs import JOBS, add_jobs_routes
 from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
@@ -75,6 +76,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_jobs_routes(app)
     add_stt_runs_routes(app, settings, POOL, registry)
     add_analyses_routes(app, settings, POOL, registry)
+    add_comparisons_routes(app, settings, POOL, registry)
 
     async def recover_hook(app):
         await recordings.recover_all(app[POOL], settings)

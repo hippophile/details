@@ -17,10 +17,11 @@ def test_tables_and_columns(db):
 
 
 def test_only_two_tables_added(db):
-    """0002 adds script + recording; later migrations add their own tables (job: 0003, stt_run + transcript_segment: 0004, prompt_template + analysis_run + output: 0005)."""
+    """0002 adds script + recording; later migrations add their own tables (job: 0003, stt_run + transcript_segment: 0004, prompt_template + analysis_run + output: 0005, comparison + comparison_item + eval_result: 0006)."""
     names = {r[0] for r in db.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
     assert {"script", "recording"} <= names and names <= {"schema_migration", "script", "recording", "job", "stt_run", "transcript_segment",
-                                                                     "prompt_template", "analysis_run", "output"}
+                                                                     "prompt_template", "analysis_run", "output", "comparison", "comparison_item",
+                                                                     "eval_result"}
 
 
 def test_slug_unique(db):
