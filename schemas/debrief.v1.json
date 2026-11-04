@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "debrief",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "owner",
+          "due",
+          "done",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "severity",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "summary",
+    "decisions",
+    "action_items",
+    "risks",
+    "open_questions"
+  ],
+  "additionalProperties": false
+}

@@ -79,6 +79,22 @@ class Stt:
 
 
 @dataclass(frozen=True)
+class Llm:
+    single_pass_max_tokens: int   # transcripts estimated above this are split into chunks (map-reduce)
+    chunk_tokens: int             # target chunk size, estimated
+    chunk_overlap_tokens: int     # segments repeated at the start of the next chunk, estimated
+    chars_per_token: float        # estimate, not measured (Greek tokenises worse than English)
+    timeout_s: float              # one chat call
+    max_tokens_debrief: int
+    max_tokens_notes: int
+    max_tokens_checklist: int
+    max_tokens_tags: int
+
+    def max_tokens(self, kind):
+        return getattr(self, f"max_tokens_{kind}")
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
@@ -89,6 +105,7 @@ class Settings:
     models: Models
     runner: Runner
     stt: Stt
+    llm: Llm
     import_: Import   # config section [import]; trailing underscore because `import` is a keyword
 
 
@@ -156,12 +173,25 @@ def _v_stt(s):
         raise ValueError("stt.window_s: must be >= 1")
 
 
+def _v_llm(s):
+    for k in ("single_pass_max_tokens", "chunk_tokens", "max_tokens_debrief", "max_tokens_notes",
+              "max_tokens_checklist", "max_tokens_tags"):
+        if getattr(s, k) < 1:
+            raise ValueError(f"llm.{k}: must be >= 1")
+    if s.chunk_overlap_tokens < 0:
+        raise ValueError("llm.chunk_overlap_tokens: must be >= 0")
+    if s.chars_per_token <= 0:
+        raise ValueError("llm.chars_per_token: must be > 0")
+    if s.timeout_s <= 0:
+        raise ValueError("llm.timeout_s: must be > 0")
+
+
 # section name -> (dataclass, validation hook). Later changes add a section here + a [section] in config.toml.
 SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
             "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
             "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import),
             "models": (Models, _v_models), "runner": (Runner, _v_runner),
-            "stt": (Stt, _v_stt)}
+            "stt": (Stt, _v_stt), "llm": (Llm, _v_llm)}
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],

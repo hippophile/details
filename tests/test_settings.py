@@ -39,6 +39,16 @@ cancel_grace_s = 5
 window_s = 30
 vocab_hint = "hint"
 plugins = ""
+[llm]
+single_pass_max_tokens = 20000
+chunk_tokens = 8000
+chunk_overlap_tokens = 200
+chars_per_token = 2.5
+timeout_s = 900
+max_tokens_debrief = 2000
+max_tokens_notes = 2000
+max_tokens_checklist = 1500
+max_tokens_tags = 400
 """
 
 
@@ -126,3 +136,12 @@ def test_stt_section_defaults_and_validation(cfg):
     assert s.stt.window_s == 30 and s.stt.plugins == ""
     with pytest.raises(SettingsError, match=r"stt\.window_s"):
         load(cfg, env={"DETAILS_STT_WINDOW_S": "0"})
+
+
+def test_llm_section_defaults_env_override_and_validation(cfg):
+    s = load(cfg)
+    assert s.llm.single_pass_max_tokens == 20000 and s.llm.chars_per_token == 2.5
+    assert s.llm.max_tokens("tags") == 400
+    assert load(cfg, {"DETAILS_LLM_CHUNK_TOKENS": "1234"}).llm.chunk_tokens == 1234
+    with pytest.raises(SettingsError, match=r"llm\.chars_per_token"):
+        load(cfg, {"DETAILS_LLM_CHARS_PER_TOKEN": "0"})

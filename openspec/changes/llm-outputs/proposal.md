@@ -12,7 +12,7 @@ Assumed from `stt-runs`: `stt_run.language` (`el`/`en`/`auto`), `stt_run.text`, 
 ## Measured blast radius (repo at 2026-11-03)
 No `src/`, `web/`, `prompts/`, `schemas/` exist yet. `eval/score.py` has `norm()` (read-only reuse, loaded by path; no edit).
 Created: `db/migrations/0005_llm_outputs.sql`; `prompts/{debrief,notes,checklist,tags}/v1.md`; `schemas/{debrief,notes,checklist,tags}.v1.json`; `src/details/llm/{client,prompts,schemas,quotes,chunking,pipeline,markdown}.py`; `src/details/runner/steps_analyse.py`; `src/details/api/analyses.py`; `web/analyse/{outputs.js,outputs.css}`; `tests/test_llm_*.py`, golden files `tests/golden/*.md`.
-Edited: `web/analyse/index.html` + `analyse.js` (AI model card, chips, outputs area), `config.toml` + `src/details/settings.py` (new `llm` section: token budgets, per-kind `max_tokens`; the URL stays `settings.lmstudio.url`), `tests/fakes/lmstudio.py` (extend `FakeLMStudio` with an HTTP mode; no new fake module), `src/details/app.py` (routes, prompt sync at startup), `requirements.txt` (+`jsonschema`).
+Edited: `web/analyse/index.html` + `analyse.js` (AI model card, chips, outputs area), `config.toml` + `src/details/settings.py` (new `llm` section: token budgets, per-kind `max_tokens`; the URL stays `settings.lmstudio.url`), `tests/fakes/lmstudio.py` (extend `FakeLMStudio` with an HTTP mode; no new fake module), `src/details/app.py` (routes, prompt sync at startup), `requirements.txt` (+`jsonschema`), `Makefile` (`make prompts`), `tests/llm_helpers.py` + `tests/test_llm_gpu.py` (marker gpu), small edits to `tests/test_migrate.py`, `test_recording_migration.py`, `test_settings.py`, `test_library_purge.py` (new table/section, un-skipped cascade).
 
 ## Decision
 1. **Migration 0005:** `prompt_template(id, name, version, kind, body, output_schema, sha256, created_at, unique(name,version))`; `analysis_run(id, group_id, stt_run_id → stt_run CASCADE, kind, prompt_template_id, llm_endpoint, model_id, params jsonb, output_language, input_text_sha256, rendered_prompt, status, started_at, finished_at, wall_ms, tokens_in, tokens_out, tok_per_s, finish_reason, raw_response jsonb, schema_valid, validation_errors jsonb, retry_of → analysis_run, error)`; `output(id, analysis_run_id CASCADE unique, kind, schema_version, content jsonb)`. One `group_id` per Start click = what the UI calls an "analysis". No `checklist_item` and no `tag` table: ticks patch the `output.content` jsonb and tags live in `output.content` (a tag table is v2.1).
@@ -34,6 +34,9 @@ Edited: `web/analyse/index.html` + `analyse.js` (AI model card, chips, outputs a
 - Manual: with real LM Studio, run E4B on a short recording, screenshot all tabs, tick a checkbox, reload, confirm it stays; record measured wall time and tokens (label as measured on this Mac).
 
 ## Caveats
+- Single-pass and chunk size are also capped by the model's `context` from `models.toml` (gemma-cheap = 8192): room = context - max_tokens - 1500, so the 20000/8000 defaults only apply to larger-context models.
+- `verified` is allowed in the stored schema but stripped from the schema sent to the model and used to validate its reply.
+- Observed on E4B: invented year in `due` ("1590-11-15" when only "15 Νοεμβρίου" was said); needs a prompt v2.
 - Quote check is strict normalised substring; small models paraphrase quotes, so expect many "unverified" on E4B. Fuzzy matching (ratio ≥0.9, ML doc §4.4) is deliberately left to v2.1 after seeing real rates.
 - `reasoning_effort:"none"` and `json_schema` were verified on Gemma E4B only; MLX 26B and Qwen are untested. Schema validity per model is itself the comparison metric.
 - The 8k chunk size and the 2.5 chars/token figure are estimates, not measured; Greek may tokenise worse. Chunk size is config, not code.

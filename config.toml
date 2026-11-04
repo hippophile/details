@@ -44,3 +44,14 @@ cancel_grace_s = 5                # SIGTERM -> SIGKILL delay when cancelling
 window_s = 30                     # audio is transcribed in windows of this many seconds (checkpoint + resume unit)
 vocab_hint = "Συνάντηση για AI adoption, agents, local LLM, RAG, embeddings, PostgreSQL, pgvector, MCP, AI Act, GDPR, Azure OpenAI, Docker, CI/CD, GitHub Actions, pull request, sprint, .NET, Blazor, KPIs, Jira, backlog."
 plugins = ""                      # extra engine modules for the worker (comma-separated)
+
+[llm]                             # the LM Studio URL stays in [lmstudio] url
+single_pass_max_tokens = 20000    # transcripts estimated above this are processed in chunks (also capped by the model's context)
+chunk_tokens = 8000               # estimated tokens per chunk (estimate, not measured)
+chunk_overlap_tokens = 200        # whole segments repeated at the start of the next chunk
+chars_per_token = 2.5             # estimate for Greek, not measured; real usage.prompt_tokens is stored per run
+timeout_s = 900                   # one chat call
+max_tokens_debrief = 2000
+max_tokens_notes = 2000
+max_tokens_checklist = 1500
+max_tokens_tags = 400

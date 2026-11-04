@@ -125,7 +125,9 @@
       li.onclick = () => select(r);
       li.onkeydown = (ev) => { if (ev.target === li && isActivateKey(ev)) { ev.preventDefault(); select(r); } };
       ul.appendChild(li);
+      if (window.Outputs) window.Outputs.decorate(li, r);
     }
+    if (window.Outputs) window.Outputs.setRuns(runs, selected);
     const live = runs.find((r) => (r.status === "queued" || r.status === "running") && r.job_id);
     if (live) watch(live.job_id);
   }
@@ -138,6 +140,7 @@
   }
   async function select(r) {
     selected = r;
+    if (window.Outputs) window.Outputs.pick(r);
     for (const li of $("runs").children) li.classList.remove("sel");
     await loadRuns_mark(r);
     const box = $("transcript");
@@ -168,6 +171,7 @@
     const i = runs.findIndex((x) => x.id === r.id);
     if (i >= 0 && $("runs").children[i]) $("runs").children[i].classList.add("sel");
   }
+  document.addEventListener("analyses-changed", () => { loadRuns().catch(() => {}); });
   player.addEventListener("timeupdate", () => {
     const ms = player.currentTime * 1000;
     for (const row of segEls) row.classList.toggle("on", ms >= +row.dataset.start && ms < +row.dataset.end);

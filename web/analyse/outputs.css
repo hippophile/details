@@ -1,0 +1,34 @@
+/* AI write-up: model card, output chips, result tabs. Uses the shared tokens (light/dark). */
+#aiSlot { border-style:solid; }
+#aiSlot .row { margin-bottom:10px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 12px; }
+.chip { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--fg); padding:6px 12px; border:1px solid var(--line); border-radius:999px; cursor:pointer; }
+.chip:has(input:checked) { border-color:var(--accent); background:rgba(47,111,222,.10); }
+.chip:has(input:focus-visible), .ck:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+#aiReason:empty, #aiStatus:empty, #aiMsg:empty { display:none; }
+#aiResults .actions { margin-top:12px; }
+#aiPanel { overflow-wrap:anywhere; }
+#aiPanel h3 { font-size:15px; margin:14px 0 6px; }
+#aiPanel p.summary { margin:0 0 6px; }
+#aiPanel ul { margin:0 0 6px; padding-left:20px; }
+#aiPanel ul.ckl { list-style:none; padding-left:0; }
+.ck { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; padding:6px 4px; border-bottom:1px solid var(--line); }
+.ck input { width:18px; height:18px; flex:none; align-self:center; }
+.ck label { color:var(--fg); font-size:16px; flex:1 1 240px; cursor:pointer; }
+.ck input:checked + label { text-decoration:line-through; color:var(--muted); }
+.item .quote, .ck .quote { flex-basis:100%; margin-left:28px; font-size:13px; color:var(--muted); font-style:italic; }
+.item .meta, .ck .meta { font-size:13px; }
+.unverified { opacity:.55; }
+.unverified .tag-unv, .tag-unv { color:var(--warn); font-style:normal; font-weight:600; }
+.sev { font-size:12px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); margin-right:6px; }
+.sev.high { color:var(--bad); border-color:var(--bad); }
+.sev.medium { color:var(--warn); border-color:var(--warn); }
+.tagpills { display:flex; flex-wrap:wrap; gap:8px; padding:0; list-style:none; }
+.tagpill { padding:4px 12px; border:1px solid var(--accent); border-radius:999px; color:var(--accent); font-size:14px; }
+.tagpill.unverified { border-color:var(--line); color:var(--muted); }
+.bad-note { color:var(--bad); font-weight:600; margin-bottom:6px; }
+pre.rawtext { white-space:pre-wrap; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:13px; max-height:320px; overflow:auto; }
+.analyses { flex-basis:100%; list-style:none; margin:0; padding:0 0 0 18px; }
+.analysis { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:4px 8px; border-radius:6px; font-size:14px; cursor:pointer; }
+.analysis:hover, .analysis.sel { background:rgba(47,111,222,.10); }
+.analysis:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }

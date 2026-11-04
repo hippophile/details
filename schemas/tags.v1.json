@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tags",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "tags": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9α-ωά-ώ]+(-[a-z0-9α-ωά-ώ]+)*$"
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "tags"
+  ],
+  "additionalProperties": false
+}

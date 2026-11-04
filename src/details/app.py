@@ -5,6 +5,7 @@ from aiohttp import web
 
 from psycopg_pool import AsyncConnectionPool
 
+from .api.analyses import add_analyses_routes
 from .api.jobs import JOBS, add_jobs_routes
 from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
@@ -73,6 +74,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_models_routes(app, settings, registry, ctl)
     add_jobs_routes(app)
     add_stt_runs_routes(app, settings, POOL, registry)
+    add_analyses_routes(app, settings, POOL, registry)
 
     async def recover_hook(app):
         await recordings.recover_all(app[POOL], settings)
@@ -89,13 +91,19 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         steps_stt.bind(app[POOL])
         await stt_runs.adopt_v1_transcripts(app[POOL], settings)
 
+    async def prompts_hook(app):
+        from .llm.prompts import sync_prompts
+        from .runner import steps_analyse
+        steps_analyse.bind(app[POOL])
+        await sync_prompts(app[POOL])
+
     async def runner_hook(app):
         svc = JobService(app[POOL], step_registry, registry)
         app[JOBS] = svc
         app[RUNNER] = JobRunner(svc, settings, memory, step_registry)
         await app[RUNNER].start()
 
-    hooks = (recover_hook, seed_hook, purge_hook, stt_hook, runner_hook, *hooks)
+    hooks = (recover_hook, seed_hook, purge_hook, stt_hook, prompts_hook, runner_hook, *hooks)
 
     async def startup(app):
         if not settings.db.url:

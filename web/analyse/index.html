@@ -6,6 +6,7 @@
 <title>Analyse</title>
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="/analyse/analyse.css">
+<link rel="stylesheet" href="/analyse/outputs.css">
 </head>
 <body>
 <nav id="nav" aria-label="Pages"></nav>
@@ -47,7 +48,38 @@
 
     <div class="card" id="aiSlot">
       <h2>AI model</h2>
-      <div class="meta">Summaries and other AI outputs will appear here in a later version.</div>
+      <div class="row">
+        <div><label for="aiSource">Transcript</label><br><select id="aiSource"></select></div>
+        <div><label for="aiModel">AI model</label><br><select id="aiModel"><option value="">Choose AI model</option></select></div>
+        <div><label for="aiLang">Write in</label><br>
+          <select id="aiLang"><option value="transcript">Transcript language</option><option value="en">English</option></select></div>
+      </div>
+      <div class="chips" role="group" aria-label="Outputs">
+        <label class="chip"><input type="checkbox" data-kind="debrief" checked> Debrief</label>
+        <label class="chip"><input type="checkbox" data-kind="notes" checked> Notes</label>
+        <label class="chip"><input type="checkbox" data-kind="checklist" checked> Checklist</label>
+        <label class="chip"><input type="checkbox" data-kind="tags" checked> Tags</label>
+      </div>
+      <div class="row">
+        <button class="btn" id="aiStart" type="button" disabled>Start analysis</button>
+        <button class="btn bad sm" id="aiCancel" type="button" hidden>Cancel</button>
+        <div class="meta" id="aiStatus" role="status" aria-live="polite"></div>
+      </div>
+      <div class="meta" id="aiReason" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="card" id="aiResults" hidden>
+      <h2>Write-up</h2>
+      <div class="tabs" id="aiTabs" role="tablist" aria-label="Outputs"></div>
+      <div id="aiPanel" role="tabpanel"></div>
+      <div class="meta" id="aiFooter"></div>
+      <div class="row actions">
+        <button class="btn sm ghost" id="aiCopy" type="button">Copy Markdown</button>
+        <button class="btn sm ghost" id="aiDownload" type="button">Download .md</button>
+        <button class="btn sm ghost" id="aiCopyAll" type="button">Copy all</button>
+        <button class="btn sm ghost" id="aiDownloadAll" type="button">Download all</button>
+      </div>
+      <div class="meta" id="aiMsg" role="status" aria-live="polite"></div>
     </div>
 
     <div class="card">
@@ -74,6 +106,7 @@
 
 <script src="/shared/nav.js"></script>
 <script src="/analyse/api.js"></script>
+<script src="/analyse/outputs.js"></script>
 <script src="/analyse/analyse.js"></script>
 </body>
 </html>

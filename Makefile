@@ -3,7 +3,7 @@ PYS := .venv/bin/python
 AUDIO ?= sessions/my_take.wav
 MODELS ?=
 
-.PHONY: setup run record score test migrate
+.PHONY: setup run record score test migrate prompts
 
 setup:            ## one-time: ffmpeg + Python 3.12 venv + packages + Whisper models (~4.6 GB)
 	@command -v ffmpeg >/dev/null || brew install ffmpeg
@@ -16,6 +16,9 @@ run:              ## server on http://localhost:$${PORT:-8765}  (v1 live page at
 
 migrate:          ## apply db/migrations/*.sql to DATABASE_URL
 	PYTHONPATH=src $(PYS) -m details.migrate
+
+prompts:          ## sync prompts/*/v*.md into prompt_template (also runs at server start)
+	PYTHONPATH=src $(PYS) -m details.llm.prompts
 
 record:           ## record the mic to sessions/my_take.wav (Ctrl+C to stop)
 	./eval/record.sh
