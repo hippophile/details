@@ -12,6 +12,7 @@ hf_hub = "~/.cache/huggingface/hub"
 url = "http://localhost:1234"
 cli = "/opt/lms"
 exclusive = false
+unload_on_terminal = true
 [db]
 url = ""
 url_test = ""
@@ -35,6 +36,7 @@ path = "models.toml"
 [runner]
 heartbeat_timeout_s = 120
 cancel_grace_s = 5
+log_max_lines = 5000
 [stt]
 window_s = 30
 vocab_hint = "hint"
@@ -145,3 +147,15 @@ def test_llm_section_defaults_env_override_and_validation(cfg):
     assert load(cfg, {"DETAILS_LLM_CHUNK_TOKENS": "1234"}).llm.chunk_tokens == 1234
     with pytest.raises(SettingsError, match=r"llm\.chars_per_token"):
         load(cfg, {"DETAILS_LLM_CHARS_PER_TOKEN": "0"})
+
+
+def test_run_insights_settings_defaults_env_and_validation(cfg):
+    s = load_settings(cfg, env={}, dotenv_path=None)
+    assert s.runner.log_max_lines == 5000 and s.lmstudio.unload_on_terminal is True
+    s = load_settings(cfg, env={"DETAILS_RUNNER_LOG_MAX_LINES": "50", "DETAILS_LMSTUDIO_UNLOAD_ON_TERMINAL": "false"},
+                      dotenv_path=None)
+    assert s.runner.log_max_lines == 50 and s.lmstudio.unload_on_terminal is False
+    with pytest.raises(SettingsError, match="log_max_lines"):
+        load_settings(cfg, env={"DETAILS_RUNNER_LOG_MAX_LINES": "0"}, dotenv_path=None)
+    with pytest.raises(SettingsError, match="unload_on_terminal"):
+        load_settings(cfg, env={"DETAILS_LMSTUDIO_UNLOAD_ON_TERMINAL": "maybe"}, dotenv_path=None)

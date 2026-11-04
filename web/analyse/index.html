@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="/analyse/analyse.css">
 <link rel="stylesheet" href="/analyse/outputs.css">
+<link rel="stylesheet" href="/analyse/insights.css">
 <link rel="stylesheet" href="/analyse/compare.css">
 </head>
 <body>
@@ -44,6 +45,25 @@
         <div id="elapsed" class="meta">0:00</div>
         <button class="btn bad sm" id="cancel" type="button">Cancel</button></div>
       <div class="bar"><div id="barfill"></div></div>
+      <div id="insights" class="insights" hidden>
+        <div id="stepTable" class="steps-wrap" hidden>
+          <table class="steps" aria-label="Pipeline steps">
+            <thead><tr><th>Step</th><th>Status</th><th>Time</th><th>Model</th><th class="ncol">Tokens in</th>
+              <th class="ncol">Tokens out</th><th class="ncol">tok/s</th><th class="ncol">Free RAM</th></tr></thead>
+            <tbody id="stepRows"></tbody>
+          </table>
+        </div>
+        <details id="logPanel" class="logpanel">
+          <summary>Log</summary>
+          <div class="row log-tools">
+            <label for="logLevel">Level</label>
+            <select id="logLevel"><option value="all">All</option><option value="info">Info and above</option>
+              <option value="warn">Warnings and errors</option><option value="error">Errors only</option></select>
+            <a class="btn sm ghost" id="logDownload" href="#" download>Download</a>
+          </div>
+          <pre id="logBody" class="logbody" tabindex="0" aria-label="Job log"></pre>
+        </details>
+      </div>
       <div class="meta">You can close this page: the run keeps going and shows up here when you come back.</div>
     </div>
 
@@ -69,6 +89,8 @@
       <div class="meta" id="aiReason" role="status" aria-live="polite"></div>
     </div>
 
+    <div id="aiInsightsHost"></div>
+
     <div class="card" id="aiResults" hidden>
       <h2>Write-up</h2>
       <div class="tabs" id="aiTabs" role="tablist" aria-label="Outputs"></div>
@@ -79,6 +101,8 @@
         <button class="btn sm ghost" id="aiDownload" type="button">Download .md</button>
         <button class="btn sm ghost" id="aiCopyAll" type="button">Copy all</button>
         <button class="btn sm ghost" id="aiDownloadAll" type="button">Download all</button>
+        <button class="btn sm ghost" id="aiInspect" type="button">Inspect</button>
+        <button class="btn sm ghost" id="aiLog" type="button">Pipeline and log</button>
       </div>
       <div class="meta" id="aiMsg" role="status" aria-live="polite"></div>
     </div>
@@ -136,8 +160,21 @@
   </div>
 </dialog>
 
+<dialog id="inspectDlg" aria-labelledby="inspectTitle">
+  <div class="row"><h2 id="inspectTitle">Prompt inspector</h2>
+    <select id="inspectAttempts" aria-label="Attempt" hidden></select>
+    <button class="btn sm ghost" id="inspectClose" type="button">Close</button></div>
+  <div class="tabs" id="inspectTabs" role="tablist" aria-label="Inspector"></div>
+  <div class="meta" id="inspectMeta"></div>
+  <div id="inspectNote"></div>
+  <pre id="inspectBody" tabindex="0" aria-label="Stored text"></pre>
+  <div class="row"><button class="btn sm" id="inspectCopy" type="button">Copy</button>
+    <span class="meta" id="inspectMsg" role="status" aria-live="polite"></span></div>
+</dialog>
+
 <script src="/shared/nav.js"></script>
 <script src="/analyse/api.js"></script>
+<script src="/analyse/insights.js"></script>
 <script src="/analyse/outputs.js"></script>
 <script src="/analyse/compare.js"></script>
 <script src="/analyse/analyse.js"></script>

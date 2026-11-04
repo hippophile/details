@@ -120,6 +120,7 @@
       }
     };
     watching = { id: jobId, timer: setInterval(poll, 1500) };
+    if (window.Insights) window.Insights.attach($("aiInsightsHost"), jobId);
     $("aiCancel").hidden = false;
     syncStart();
     poll();
@@ -161,6 +162,10 @@
     $("aiCopyAll").onclick = () => copyMd(`/api/analyses/${g.group_id}/markdown`);
     $("aiDownloadAll").onclick = () => download(`/api/analyses/${g.group_id}/markdown?download=1`);
     for (const row of document.querySelectorAll(".analysis")) row.classList.remove("sel");
+    $("aiInspect").disabled = !kd || !kd.run_id;
+    $("aiInspect").onclick = () => window.Insights && window.Insights.inspect(kd.run_id);
+    $("aiLog").disabled = !g.job_id;
+    $("aiLog").onclick = () => window.Insights && window.Insights.attach($("aiInsightsHost"), g.job_id, { finished: !["queued", "running"].includes(g.status) });
   }
 
   function renderKind(panel, kd) {

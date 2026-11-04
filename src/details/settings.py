@@ -28,6 +28,7 @@ class LmStudio:
     url: str
     cli: str
     exclusive: bool   # true = the memory manager may also unload models it did not load
+    unload_on_terminal: bool   # true = a failed/cancelled analysis unloads the model this app loaded
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,7 @@ class Models:
 class Runner:
     heartbeat_timeout_s: float
     cancel_grace_s: float
+    log_max_lines: int            # per job; one "log truncated" line is written after that
 
 
 @dataclass(frozen=True)
@@ -161,6 +163,8 @@ def _v_runner(s):
         raise ValueError("runner.heartbeat_timeout_s: must be > 0")
     if s.cancel_grace_s < 0:
         raise ValueError("runner.cancel_grace_s: must be >= 0")
+    if s.log_max_lines < 1:
+        raise ValueError("runner.log_max_lines: must be > 0")
 
 
 def _v_import(s):

@@ -37,8 +37,9 @@ def _uuid(value):
 
 
 class JobService:
-    def __init__(self, pool, steps, models):
+    def __init__(self, pool, steps, models, joblogs=None):
         self.pool, self.steps, self.models = pool, steps, models
+        self.joblogs = joblogs       # JobLogs registry: optional, only used to log the cancel of a queued job
         self.wake = None             # set by the runner: called after enqueue/retry
         self.cancel_running = None   # set by the runner: called with a job id after it became `cancelling`
 
@@ -119,6 +120,8 @@ class JobService:
                     raise WrongState(f"job is {row['status']}: only queued or running jobs can be cancelled")
                 job = _out(await cur.fetchone())
         if job["status"] == "cancelled":
+            if self.joblogs:
+                self.joblogs.get(jid).append(None, "warn", "runner", "job cancelled while queued")
             await self.run_finalizers(job, "cancelled", None, job["step_index"])
         elif self.cancel_running:
             self.cancel_running(jid)

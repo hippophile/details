@@ -3,11 +3,20 @@ import asyncio, json
 
 from aiohttp import web
 
+from ..runner import stepinfo
+from ..runner.joblog import secrets_from
 from ..services.jobs import TERMINAL, JobError, JobService, NotFound, WrongState
 
 JOBS = web.AppKey("jobs", JobService)
 SSE_POLL_S = 0.25
 SSE_PING_S = 15
+
+
+def job_steps(request, job):
+    """The `steps` list of a job (step.json records; settings and data_dir come from the app keys)."""
+    from ..app import SETTINGS          # late: app.py imports this module
+    settings = request.app[SETTINGS]
+    return stepinfo.view(settings.paths.data_dir, job, secrets_from(settings))
 
 
 def add_jobs_routes(app):
@@ -53,9 +62,9 @@ def add_jobs_routes(app):
                 return err(str(e), 409)
         return handler
 
-    def state(job, seq):
+    def state(request, job, seq):
         return {"seq": seq, "job": job["id"], "status": job["status"], "step": job["step"],
-                "pct": job["step_progress"], "msg": job["message"]}
+                "pct": job["step_progress"], "msg": job["message"], "steps": job_steps(request, job)}
 
     async def events(request):
         s = svc(request)
@@ -72,7 +81,7 @@ def add_jobs_routes(app):
         prev, quiet = None, 0.0
         try:
             while job is not None:
-                cur = state(job, 0)
+                cur = state(request, job, 0)
                 if cur != prev:
                     seq, prev, quiet = seq + 1, cur, 0.0
                     await resp.write(f"id: {seq}\ndata: {json.dumps({**cur, 'seq': seq})}\n\n".encode())

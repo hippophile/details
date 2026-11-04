@@ -1,6 +1,7 @@
 """Step `analyse`: one LM Studio call chain per output kind (validate, retry once, verify quotes, map-reduce for long
 transcripts), persisted as analysis_run + output rows. Finalizer `on_terminal`: a job that ends cancelled/failed (even
-while queued) sets its unfinished analysis_run rows to match. The pool is bound at startup (`bind`)."""
+while queued) sets its unfinished analysis_run rows to match and, with guards, unloads the model this app loaded.
+The pool (and memory/settings/lease) are bound at startup (`bind`)."""
 import hashlib, logging, types
 
 from psycopg.types.json import Jsonb
@@ -9,17 +10,19 @@ from ..llm import client, pipeline
 from ..llm.client import LLMError
 from ..llm.lmstudio_ctl import identifier_for
 from ..llm.prompts import language_name
+from .joblog import JobLogs
 from .steps import StepError, steps
 
 log = logging.getLogger("details.analyse")
-_POOL = None
+_POOL = _MEMORY = _SETTINGS = _HUB = _LEASE = None
 RUN_COLS = ("group_id, stt_run_id, kind, prompt_template_id, llm_endpoint, model_id, params, output_language, "
             "input_text_sha256")
 
 
-def bind(pool):
-    global _POOL
-    _POOL = pool
+def bind(pool, *, memory=None, settings=None, hub=None, lease=None):
+    """memory/settings/lease enable the terminal unload; `hub` is reserved for live-assistant (unused here)."""
+    global _POOL, _MEMORY, _SETTINGS, _HUB, _LEASE
+    _POOL, _MEMORY, _SETTINGS, _HUB, _LEASE = pool, memory, settings, hub, lease
 
 
 def _analyse_params(job):
@@ -86,9 +89,26 @@ async def analyse(ctx):
     model_name = identifier_for(entry.id)
     language = language_name(run["language"], full, rows[0]["output_language"])
 
+    await ctx.memory.ensure_llm(entry)       # no-op when loaded; a retry after the terminal unload reloads it
+    totals = {"tokens_in": 0, "tokens_out": 0, "wall_ms": 0}
+
     async def chat(messages, *, kind, schema, max_tokens):
-        return await client.chat(ctx.settings, model=model_name, kind=kind, schema=schema, messages=messages,
-                                 max_tokens=max_tokens)
+        attempt = 2 if any(m.get("role") == "assistant" for m in messages) else 1     # a retry appends the bad reply
+        info = {"model": model_name, "kind": kind, "attempt": attempt}
+        try:
+            r = await client.chat(ctx.settings, model=model_name, kind=kind, schema=schema, messages=messages,
+                                  max_tokens=max_tokens)
+        except LLMError as e:
+            ctx.log("error", "LM Studio call failed", src="llm", **info, tokens_in=None, tokens_out=None,
+                    wall_ms=None, finish_reason=None, status=e.status)
+            raise
+        ctx.log("info", "LM Studio call", src="llm", **info, tokens_in=r["tokens_in"], tokens_out=r["tokens_out"],
+                wall_ms=r["wall_ms"], finish_reason=r["finish_reason"], status="ok")
+        for k in totals:
+            totals[k] += r[k]
+        ctx.metrics(model=model_name, tokens_in=totals["tokens_in"], tokens_out=totals["tokens_out"],
+                    tok_per_s=round(totals["tokens_out"] / (totals["wall_ms"] / 1000), 1) if totals["wall_ms"] else None)
+        return r
 
     for n, row in enumerate(rows):
         kind = row["kind"]
@@ -127,12 +147,55 @@ async def finalize(job, status, error):
         log.warning("analyse finalizer ran before the pool was bound")
         return
     gid = _analyse_params(job).get("group_id") or (job.get("params") or {}).get("group_id")
-    if not gid:
-        return
+    if gid:
+        await _set_rows(gid, status, error)
+    if status in ("failed", "cancelled"):
+        await _terminal_unload(job, status)
+
+
+async def _set_rows(gid, status, error):
     msg = error or ("cancelled" if status == "cancelled" else "failed")
     async with _POOL.connection() as c:
         await c.execute("UPDATE analysis_run SET status=%s, error=%s, finished_at=now() "
                         "WHERE group_id=%s AND status IN ('queued', 'running')", (status, msg, gid))
+
+
+async def _unload_wanted(job):
+    """Guards of the terminal unload. -> a reason to skip, or None."""
+    if _MEMORY is None or _SETTINGS is None:
+        return "not bound"
+    if not _SETTINGS.lmstudio.unload_on_terminal:
+        return "lmstudio.unload_on_terminal is off"
+    if _LEASE is not None and _LEASE.owner == "live":
+        return "the live assistant holds the GPU"
+    async with _POOL.connection() as c:
+        if await (await c.execute("SELECT 1 FROM job WHERE status IN ('running', 'cancelling') AND id<>%s LIMIT 1",
+                                  (job["id"],))).fetchone():
+            return "another job is running"
+        mine = _analyse_params(job).get("model_id") or (job.get("params") or {}).get("model_id")
+        for q in await (await c.execute("SELECT params, steps FROM job WHERE status='queued' AND id<>%s",
+                                        (job["id"],))).fetchall():
+            for st in q["steps"]:
+                if st["name"] == "lm_load" and mine and {**q["params"], **st["params"]}.get("model_id") == mine:
+                    return "a queued job loads the same model"
+    return None
+
+
+async def _terminal_unload(job, status):
+    jl = JobLogs.for_settings(_SETTINGS).get(job["id"]) if _SETTINGS is not None else None
+    try:
+        why = await _unload_wanted(job)
+        if why:
+            if jl:
+                jl.append(None, "info", "memory", f"terminal unload skipped: {why}")
+            return
+        await _MEMORY.release()
+        if jl:
+            jl.append(None, "info", "memory", f"unloaded the app's model after the job {status}")
+    except Exception as e:          # never changes the job status
+        log.warning("terminal unload failed (job %s stays %s): %s", job["id"], status, type(e).__name__)
+        if jl:
+            jl.append(None, "warn", "memory", f"terminal unload failed: {e}")
 
 
 def install(registry):

@@ -7,6 +7,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from .api.analyses import add_analyses_routes
 from .api.comparisons import add_comparisons_routes
+from .api.insights import add_insights_routes
 from .api.jobs import JOBS, add_jobs_routes
 from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
@@ -16,6 +17,8 @@ from .api.stt_runs import add_stt_runs_routes
 from .db import open_pool
 from .llm.lmstudio_ctl import CliTransport, Controller
 from .migrate import MIGRATIONS_DIR, check_pending
+from .runner.joblog import JobLogs
+from .runner.lease import GpuLease
 from .runner.memory import MemoryManager, VmStatMemInfo
 from .runner.runner import JobRunner
 from .runner.steps import steps as default_steps
@@ -31,6 +34,8 @@ SETTINGS = web.AppKey("settings", Settings)
 POOL = web.AppKey("pool", AsyncConnectionPool)
 PURGE_TASK = web.AppKey("purge_task", asyncio.Task)
 RUNNER = web.AppKey("runner", JobRunner)
+LEASE = web.AppKey("lease", GpuLease)          # the ONE GpuLease: the runner and the live assistant share it
+JOBLOGS = web.AppKey("joblogs", JobLogs)
 STEP_MODULES = ("details.runner.steps_stt", "details.runner.steps_analyse")   # owned by stt-runs / llm-outputs
 
 
@@ -41,6 +46,8 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     web_dir = pathlib.Path(web_dir or REPO_ROOT / "web")
     app = web.Application(middlewares=[local_only])
     app[SETTINGS] = settings
+    app[LEASE] = lease = GpuLease()
+    app[JOBLOGS] = joblogs = JobLogs.for_settings(settings)
 
     async def health(request):
         return web.json_response({"ok": True, "db": POOL in app})
@@ -74,6 +81,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
                 importlib.import_module(mod)
     add_models_routes(app, settings, registry, ctl)
     add_jobs_routes(app)
+    add_insights_routes(app, POOL)
     add_stt_runs_routes(app, settings, POOL, registry)
     add_analyses_routes(app, settings, POOL, registry)
     add_comparisons_routes(app, settings, POOL, registry)
@@ -96,13 +104,13 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     async def prompts_hook(app):
         from .llm.prompts import sync_prompts
         from .runner import steps_analyse
-        steps_analyse.bind(app[POOL])
+        steps_analyse.bind(app[POOL], memory=memory, settings=settings, lease=lease)
         await sync_prompts(app[POOL])
 
     async def runner_hook(app):
-        svc = JobService(app[POOL], step_registry, registry)
+        svc = JobService(app[POOL], step_registry, registry, joblogs=joblogs)
         app[JOBS] = svc
-        app[RUNNER] = JobRunner(svc, settings, memory, step_registry)
+        app[RUNNER] = JobRunner(svc, settings, memory, step_registry, lease=lease, joblogs=joblogs)
         await app[RUNNER].start()
 
     hooks = (recover_hook, seed_hook, purge_hook, stt_hook, prompts_hook, runner_hook, *hooks)

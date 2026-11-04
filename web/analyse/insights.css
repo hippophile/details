@@ -1,0 +1,21 @@
+/* run-insights: pipeline step table, log panel, prompt inspector. Uses the shared colour tokens (light + dark). */
+.insights { margin-top:12px; }
+.steps-wrap { overflow-x:auto; }
+table.steps { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+table.steps th { text-align:left; font-weight:600; color:var(--muted); padding:4px 8px 4px 0; border-bottom:1px solid var(--line); white-space:nowrap; }
+table.steps td { padding:5px 8px 5px 0; border-bottom:1px solid var(--line); white-space:nowrap; }
+table.steps th.ncol, table.steps td.ncol { text-align:right; }
+table.steps tr.pending td { color:var(--muted); }
+.logpanel { margin-top:12px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+.logpanel summary { cursor:pointer; font-size:14px; color:var(--muted); }
+.log-tools { margin:8px 0; }
+.log-tools a.btn { text-decoration:none; display:inline-block; }
+.logbody { margin:0; max-height:260px; overflow:auto; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; font:12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.logline.warn { color:var(--warn); }
+.logline.error { color:var(--bad); }
+.logline.debug { color:var(--muted); }
+#inspectDlg { max-width:min(860px, 94vw); width:100%; }
+#inspectBody { max-height:55vh; overflow:auto; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:pre-wrap; overflow-wrap:anywhere; margin:8px 0; }
+#inspectNote { color:var(--bad); font-size:13px; }
+#inspectNote:empty { display:none; }
+#aiInsightsHost > .insights { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 14px; }

@@ -10,6 +10,7 @@ hf_hub = "~/.cache/huggingface/hub"   # HF_HOME/hub wins when HF_HOME is set
 url = "http://localhost:1234"
 cli = "~/.lmstudio/bin/lms"
 exclusive = false                 # true = the app may also unload LM Studio models it did not load
+unload_on_terminal = true         # a failed or cancelled analysis unloads the model the app loaded (never the user's own)
 
 [db]                              # url / url_test come from DATABASE_URL / DATABASE_URL_TEST
 url = ""
@@ -39,6 +40,7 @@ path = "models.toml"              # model registry; relative to the repo root
 [runner]
 heartbeat_timeout_s = 120         # a child process silent for this long is killed and its job fails
 cancel_grace_s = 5                # SIGTERM -> SIGKILL delay when cancelling
+log_max_lines = 5000              # job log cap (lines); then one "log truncated" line and nothing more
 
 [stt]
 window_s = 30                     # audio is transcribed in windows of this many seconds (checkpoint + resume unit)

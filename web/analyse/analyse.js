@@ -63,6 +63,7 @@
     if (watching) { if (watching.es) watching.es.close(); clearInterval(watching.poll); }
     clearInterval(tick);
     watching = null;
+    if (window.Insights) window.Insights.detach($("progress"));
     $("progress").hidden = true;
     syncStart();
   }
@@ -78,6 +79,7 @@
     stopWatching();
     watching = { id: jobId, es: null, poll: null };
     $("progress").hidden = false;
+    if (window.Insights) window.Insights.attach($("progress"), jobId);
     startBtn.disabled = true;
     const t0 = Date.now();
     tick = setInterval(() => { $("elapsed").textContent = fmtClock(Date.now() - t0); }, 1000);

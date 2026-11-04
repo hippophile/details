@@ -140,7 +140,7 @@ def test_sse_first_event_is_state_then_updates_then_closes(db, db_url, mk_settin
         assert ev[0][1]["job"] == jid and ev[0][1]["status"] in ("queued", "running")
         assert ev[-1][1]["status"] == "done"
         assert [int(i) for i, _ in ev] == sorted(int(i) for i, _ in ev) and len({i for i, _ in ev}) == len(ev)
-        assert set(ev[0][1]) == {"seq", "job", "status", "step", "pct", "msg"}
+        assert set(ev[0][1]) == {"seq", "job", "status", "step", "pct", "msg", "steps"}
     api(db_url, mk_settings, body)
 
 
