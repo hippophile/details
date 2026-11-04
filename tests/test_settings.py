@@ -35,6 +35,10 @@ path = "models.toml"
 [runner]
 heartbeat_timeout_s = 120
 cancel_grace_s = 5
+[stt]
+window_s = 30
+vocab_hint = "hint"
+plugins = ""
 """
 
 
@@ -115,3 +119,10 @@ def test_record_section_defaults_env_and_validation():
     import pytest
     with pytest.raises(SettingsError, match="record.sample_rate"):
         load_settings(env={"DETAILS_RECORD_SAMPLE_RATE": "0"}, dotenv_path=None)
+
+
+def test_stt_section_defaults_and_validation(cfg):
+    s = load(cfg)
+    assert s.stt.window_s == 30 and s.stt.plugins == ""
+    with pytest.raises(SettingsError, match=r"stt\.window_s"):
+        load(cfg, env={"DETAILS_STT_WINDOW_S": "0"})

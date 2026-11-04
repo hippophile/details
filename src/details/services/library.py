@@ -8,7 +8,7 @@ from . import audio, recordings
 
 MAX_TITLE = 200
 DUR_TOLERANCE_MS = 250   # container durations of lossy sources are only approximate
-COLS = "id, title, started_at, duration_ms, size_bytes, 0 AS runs_count, deleted_at"
+COLS = "id, title, started_at, duration_ms, size_bytes, (SELECT count(*)::int FROM stt_run WHERE stt_run.recording_id = recording.id) AS runs_count, deleted_at"
 CONTENT_TYPES = {"flac": "audio/flac", "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg",
                  "m4a": "audio/mp4", "mp4": "audio/mp4"}
 

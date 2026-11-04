@@ -13,7 +13,7 @@ def count(c, table="schema_migration"):
 
 def test_applies_in_order_and_skips_second_run(blank_db, tmp_path):
     d = tmp_path / "m"
-    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*"))
+    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*", "0004_*"))
     (d / "0002_a.sql").write_text("CREATE TABLE a (id serial primary key);")
     (d / "0003_b.sql").write_text("CREATE TABLE b (id serial primary key);")
     with connect(blank_db) as c:
@@ -32,7 +32,7 @@ def test_foundation_migration_applies_once(blank_db):
 
 def test_changed_applied_file_fails_and_applies_nothing(blank_db, tmp_path):
     d = tmp_path / "m"
-    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*"))
+    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*", "0004_*"))
     with connect(blank_db) as c:
         migrate(c, d)
         (d / "0001_schema_migration.sql").write_text((d / "0001_schema_migration.sql").read_text() + "\n-- edit\n")
@@ -44,7 +44,7 @@ def test_changed_applied_file_fails_and_applies_nothing(blank_db, tmp_path):
 
 def test_failed_migration_rolls_back(blank_db, tmp_path):
     d = tmp_path / "m"
-    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*"))
+    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*", "0004_*"))
     (d / "0002_bad.sql").write_text("CREATE TABLE half (id int); SELECT * FROM no_such_table;")
     with connect(blank_db) as c:
         with pytest.raises(Exception):
@@ -68,7 +68,7 @@ def test_reset_drops_leftover_tables(blank_db):
 
 def test_truncate_all_keeps_schema_migration_and_restarts_identity(blank_db, tmp_path):
     d = tmp_path / "m"
-    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*"))
+    shutil.copytree(conftest.MIGRATIONS, d, ignore=shutil.ignore_patterns("0002_*", "0003_*", "0004_*"))
     (d / "0002_t.sql").write_text("CREATE TABLE thing (id serial primary key, v text);")
     with connect(blank_db) as c:
         migrate(c, d)

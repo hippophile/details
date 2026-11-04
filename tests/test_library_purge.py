@@ -95,4 +95,14 @@ def test_finished_job_purged_with_job_dir(db, db_url, mk_settings):
 def test_cascade_of_run_tables(db, db_url, mk_settings, table):
     if not has_table(db, table):
         pytest.skip(f"{table} table does not exist yet: cascade verified by its own change (extended when those tables exist)")
-    pytest.skip(f"{table}: minimal-column insert not defined until its migration lands")
+    if table != "stt_run":
+        pytest.skip(f"{table}: minimal-column insert not defined until its migration lands")
+    s = mk_settings(db_url)
+    rid = seed(db, s, "runs", deleted_at=ago(40))
+    run = db.execute("INSERT INTO stt_run (recording_id, engine, model_id, status) VALUES (%s,'mlx_whisper','m','done') "
+                     "RETURNING id", (rid,)).fetchone()[0]
+    db.execute("INSERT INTO transcript_segment (stt_run_id, idx, start_ms, end_ms, text) VALUES (%s,0,0,1,'x')", (run,))
+    purge(db_url, s)
+    assert not exists(db, rid)
+    assert db.execute("SELECT count(*) FROM stt_run").fetchone()[0] == 0
+    assert db.execute("SELECT count(*) FROM transcript_segment").fetchone()[0] == 0

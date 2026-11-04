@@ -72,6 +72,13 @@ class Runner:
 
 
 @dataclass(frozen=True)
+class Stt:
+    window_s: int
+    vocab_hint: str    # initial_prompt used when a run asks for the vocabulary hint
+    plugins: str       # comma-separated modules the worker imports to register extra engines (tests, v2.1)
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
@@ -81,6 +88,7 @@ class Settings:
     trash: Trash
     models: Models
     runner: Runner
+    stt: Stt
     import_: Import   # config section [import]; trailing underscore because `import` is a keyword
 
 
@@ -143,11 +151,17 @@ def _v_import(s):
         raise ValueError("import.max_mb: must be > 0")
 
 
+def _v_stt(s):
+    if s.window_s < 1:
+        raise ValueError("stt.window_s: must be >= 1")
+
+
 # section name -> (dataclass, validation hook). Later changes add a section here + a [section] in config.toml.
 SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
             "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
             "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import),
-            "models": (Models, _v_models), "runner": (Runner, _v_runner)}
+            "models": (Models, _v_models), "runner": (Runner, _v_runner),
+            "stt": (Stt, _v_stt)}
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],

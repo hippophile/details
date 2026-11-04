@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analyse</title>
+<link rel="stylesheet" href="/shared/shared.css">
+<link rel="stylesheet" href="/analyse/analyse.css">
+</head>
+<body>
+<nav id="nav" aria-label="Pages"></nav>
+<main>
+  <h1>Analyse</h1>
+
+  <div class="card" id="noRec" hidden>
+    <a href="/library">Pick a recording in Library</a> to analyse it.
+  </div>
+
+  <div id="page" hidden>
+    <div class="card" id="recHeader">
+      <h2>Recording</h2>
+      <div id="recTitle" class="rec-title"></div>
+      <div id="recMeta" class="meta"></div>
+      <audio id="player" controls preload="metadata"></audio>
+    </div>
+
+    <div class="card" id="newRun">
+      <h2>New run</h2>
+      <div class="row">
+        <div><label for="model">Speech model</label><br><select id="model"></select></div>
+        <div><label for="lang">Language</label><br>
+          <select id="lang"><option value="el">Ελληνικά</option><option value="auto">Auto</option></select></div>
+        <label class="check"><input type="checkbox" id="hint"> Tech vocab hint</label>
+        <button class="btn" id="start" type="button">Start</button>
+      </div>
+      <div class="meta" id="reason" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="card" id="progress" hidden>
+      <h2>Running</h2>
+      <div class="row"><div id="stage" aria-live="polite">Waiting</div><div id="pct" class="num">0%</div>
+        <div id="elapsed" class="meta">0:00</div>
+        <button class="btn bad sm" id="cancel" type="button">Cancel</button></div>
+      <div class="bar"><div id="barfill"></div></div>
+      <div class="meta">You can close this page: the run keeps going and shows up here when you come back.</div>
+    </div>
+
+    <div class="card" id="aiSlot">
+      <h2>AI model</h2>
+      <div class="meta">Summaries and other AI outputs will appear here in a later version.</div>
+    </div>
+
+    <div class="card">
+      <h2>Runs</h2>
+      <ul id="runs" class="runs" aria-label="Runs"></ul>
+      <div class="meta" id="runsEmpty" hidden>No runs yet. Pick a model above and press Start.</div>
+    </div>
+
+    <div class="card" id="transcriptCard">
+      <h2 id="transcriptTitle">Transcript</h2>
+      <div id="transcript" aria-live="polite"><div class="meta">Select a run to read its transcript.</div></div>
+    </div>
+  </div>
+  <div id="status" class="meta" role="status" aria-live="polite"></div>
+</main>
+
+<dialog id="confirmDlg" aria-labelledby="confirmMsg">
+  <div id="confirmMsg"></div>
+  <div class="row">
+    <button class="btn sm ghost" id="confirmNo" type="button">No</button>
+    <button class="btn sm bad" id="confirmYes" type="button">Yes</button>
+  </div>
+</dialog>
+
+<script src="/shared/nav.js"></script>
+<script src="/analyse/api.js"></script>
+<script src="/analyse/analyse.js"></script>
+</body>
+</html>

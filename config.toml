@@ -39,3 +39,8 @@ path = "models.toml"              # model registry; relative to the repo root
 [runner]
 heartbeat_timeout_s = 120         # a child process silent for this long is killed and its job fails
 cancel_grace_s = 5                # SIGTERM -> SIGKILL delay when cancelling
+
+[stt]
+window_s = 30                     # audio is transcribed in windows of this many seconds (checkpoint + resume unit)
+vocab_hint = "Συνάντηση για AI adoption, agents, local LLM, RAG, embeddings, PostgreSQL, pgvector, MCP, AI Act, GDPR, Azure OpenAI, Docker, CI/CD, GitHub Actions, pull request, sprint, .NET, Blazor, KPIs, Jira, backlog."
+plugins = ""                      # extra engine modules for the worker (comma-separated)

@@ -10,6 +10,7 @@ from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
 from .api.record import add_record_routes
 from .api.recordings import add_recordings_routes
+from .api.stt_runs import add_stt_runs_routes
 from .db import open_pool
 from .llm.lmstudio_ctl import CliTransport, Controller
 from .migrate import MIGRATIONS_DIR, check_pending
@@ -17,7 +18,7 @@ from .runner.memory import MemoryManager, VmStatMemInfo
 from .runner.runner import JobRunner
 from .runner.steps import steps as default_steps
 from .security import local_only
-from .services import recordings, scripts, trash
+from .services import recordings, scripts, stt_runs, trash
 from .services.jobs import JobService
 from .services.models import load_registry, resolve_path
 from .settings import REPO_ROOT, Settings
@@ -71,6 +72,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
                 importlib.import_module(mod)
     add_models_routes(app, settings, registry, ctl)
     add_jobs_routes(app)
+    add_stt_runs_routes(app, settings, POOL, registry)
 
     async def recover_hook(app):
         await recordings.recover_all(app[POOL], settings)
@@ -82,13 +84,18 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         await trash.purge(app[POOL], settings)
         app[PURGE_TASK] = asyncio.create_task(trash.purge_loop(app[POOL], settings))
 
+    async def stt_hook(app):
+        from .runner import steps_stt
+        steps_stt.bind(app[POOL])
+        await stt_runs.adopt_v1_transcripts(app[POOL], settings)
+
     async def runner_hook(app):
         svc = JobService(app[POOL], step_registry, registry)
         app[JOBS] = svc
         app[RUNNER] = JobRunner(svc, settings, memory, step_registry)
         await app[RUNNER].start()
 
-    hooks = (recover_hook, seed_hook, purge_hook, runner_hook, *hooks)
+    hooks = (recover_hook, seed_hook, purge_hook, stt_hook, runner_hook, *hooks)
 
     async def startup(app):
         if not settings.db.url:
