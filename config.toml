@@ -5,6 +5,8 @@ port = 8765                       # PORT is accepted as an alias
 [paths]
 data_dir = "~/details-data"
 hf_hub = "~/.cache/huggingface/hub"   # HF_HOME/hub wins when HF_HOME is set
+# prompts_dir: where prompts/<kind>/vN.md are read and new versions are saved. Default: the repo's prompts/ folder.
+# Set DETAILS_PATHS_PROMPTS_DIR (absolute path) to use another folder, e.g. in tests.
 
 [lmstudio]
 url = "http://localhost:1234"

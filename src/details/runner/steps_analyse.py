@@ -78,7 +78,7 @@ async def _analyse(ctx):
     gid = p.get("group_id")
     async with pool.connection() as c:
         rows = await (await c.execute("SELECT a.id, a.kind, a.prompt_template_id, a.output_language, a.stt_run_id, "
-                                      "t.body, t.sha256 FROM analysis_run a LEFT JOIN prompt_template t "
+                                      "t.body, t.sha256, t.checks FROM analysis_run a LEFT JOIN prompt_template t "
                                       "ON t.id=a.prompt_template_id WHERE a.group_id=%s AND a.retry_of IS NULL "
                                       "ORDER BY a.created_at, a.id", (gid,))).fetchall()
         if not rows:
@@ -165,7 +165,7 @@ async def _analyse(ctx):
                             "schema_valid=NULL, validation_errors=NULL, raw_response=NULL, input_text_sha256=%s "
                             "WHERE id=%s", (input_sha, row["id"]))
         ctx.progress(n / len(rows), f"Writing {kind} ({n + 1}/{len(rows)})")
-        template = types.SimpleNamespace(body=row["body"], sha256=row["sha256"])
+        template = types.SimpleNamespace(body=row["body"], sha256=row["sha256"], checks=tuple(row["checks"] or ()))
         live["chunk"] = None
 
         def on_progress(frac, msg=""):

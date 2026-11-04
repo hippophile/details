@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { canStart, modelLabel, itemMeta, footer, groupLabel } = createRequire(import.meta.url)("../../web/analyse/outputs.js");
+const { canStart, modelLabel, itemMeta, footer, groupLabel, pickerKinds, promptVersionsBody, promptsText } = createRequire(import.meta.url)("../../web/analyse/outputs.js");
 
 test("Start needs a chosen model, at least one kind, a done transcript and no running analysis", () => {
   assert.equal(canStart({ model: "", kinds: ["tags"], run: "r", busy: false }), false);
@@ -25,4 +25,26 @@ test("footer and group label", () => {
   const g = { n: 2, model_label: "Gemma 4 E4B", wall_ms: 61000, tokens_in: 1200, tokens_out: 340 };
   assert.equal(footer(g), "Analysis #2 · Gemma 4 E4B · 1:01 · 1200 in / 340 out tokens");
   assert.equal(groupLabel(g), "Analysis #2 · Gemma 4 E4B · 1:01");
+});
+
+const VERSIONS = { checklist: [1, 2], tags: [1], notes: [1], debrief: [1] };
+
+test("a version picker exists only for ticked kinds that have more than one version", () => {
+  assert.deepEqual(pickerKinds(VERSIONS, ["checklist", "tags"]), ["checklist"]);
+  assert.deepEqual(pickerKinds(VERSIONS, ["tags", "notes"]), []);
+  assert.deepEqual(pickerKinds(VERSIONS, []), []);
+  assert.deepEqual(pickerKinds({}, ["checklist"]), []);
+});
+
+test("request body: only the picked versions of ticked kinds that have a picker", () => {
+  assert.deepEqual(promptVersionsBody(VERSIONS, { checklist: "1", tags: "1" }, ["checklist", "tags"]), { checklist: 1 });
+  assert.deepEqual(promptVersionsBody(VERSIONS, { checklist: "2" }, ["tags"]), {});
+  assert.deepEqual(promptVersionsBody(VERSIONS, {}, ["checklist"]), {});
+});
+
+test("analyses list shows the used version for kinds with more than one version", () => {
+  assert.equal(promptsText({ checklist: 1, tags: 1 }, VERSIONS), "checklist v1");
+  assert.equal(promptsText({ checklist: 2 }, VERSIONS), "checklist v2");
+  assert.equal(promptsText({ tags: 1 }, VERSIONS), "");
+  assert.equal(promptsText(null, VERSIONS), "");
 });

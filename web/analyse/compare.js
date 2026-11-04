@@ -18,7 +18,7 @@
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
   function countsText(kind, c) {
     let parts;
-    if (kind === "checklist") parts = [plural(c.items, "item"), `${c.done} done`];
+    if (kind === "checklist") parts = [plural(c.items, "item"), `${c.done} done`, `${c.with_due || 0} with due date`];
     else if (kind === "tags") parts = [plural(c.tags, "tag")];
     else if (kind === "notes") parts = [plural(c.sections, "section"), plural(c.bullets, "bullet")];
     else parts = [plural(c.decisions, "decision"), plural(c.action_items, "action item"), plural(c.risks, "risk"), plural(c.open_questions, "open question")];
@@ -37,8 +37,14 @@
     const ai = side.ai ? [side.ai.model_label, side.ai.wall_ms ? fmtWall(side.ai.wall_ms) : null].filter(Boolean).join(" · ") : "no AI step";
     return { stt, ai };
   }
+  const CHECK_LABELS = { due_year_in_transcript: "year check" };
+  // "checklist v2 + year check": the prompt version of one side, with the code checks that version carries.
+  function promptText(kind, p) {
+    if (!p || p.version == null) return "";
+    return `${p.name || kind} v${p.version}` + (p.checks || []).map((c) => " + " + (CHECK_LABELS[c] || c)).join("");
+  }
   function diffCounter(st) { return `A: ${st.delA} of ${st.nA} words differ · B: ${st.insB} of ${st.nB}`; }
-  const exported = { toggleTick, boxDisabled, limitReason, canCompare, compareLabel, compareUrl, countsText, sideSummary, headerLines, diffCounter };
+  const exported = { toggleTick, boxDisabled, limitReason, canCompare, compareLabel, compareUrl, countsText, sideSummary, headerLines, diffCounter, promptText };
   if (typeof module !== "undefined" && module.exports) { module.exports = exported; return; }
 
   // ---- page ---------------------------------------------------------------------------------------------
@@ -159,7 +165,7 @@
     for (const b of $("cmpToggle").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.side === paneSide));
   }
 
-  function renderHeader(box, s) {
+  function renderHeader(box, s, side) {
     box.replaceChildren();
     const h = headerLines(s);
     box.appendChild(el("div", { className: "pane-title" }, `${s.side} · ${s.label}`));
@@ -167,6 +173,8 @@
     box.appendChild(speedBar(s.stt.wall_ms, Math.max(data.a.stt.wall_ms || 0, data.b.stt.wall_ms || 0)));
     box.appendChild(el("div", { className: "meta" }, `AI: ${h.ai}`));
     if (s.ai) box.appendChild(speedBar(s.ai.wall_ms, Math.max((data.a.ai || {}).wall_ms || 0, (data.b.ai || {}).wall_ms || 0)));
+    const pt = tab === "diff" ? "" : promptText(tab, ((data.outputs[tab] || {})[side] || {}).prompt);
+    if (pt) box.appendChild(el("div", { className: "meta prompt-line" }, "Prompt: " + pt));
     box.appendChild(el("div", { className: "meta" }, new Date(s.date).toLocaleString()));
   }
   function speedBar(ms, max) {
@@ -177,8 +185,8 @@
   }
 
   function renderAll() {
-    renderHeader($("cmpHeaderA"), data.a);
-    renderHeader($("cmpHeaderB"), data.b);
+    renderHeader($("cmpHeaderA"), data.a, "a");
+    renderHeader($("cmpHeaderB"), data.b, "b");
     const w = $("cmpWarnings");
     w.replaceChildren();
     for (const x of data.warnings) w.appendChild(el("div", { className: "warn-line", role: "alert" }, "Warning: " + x.message));

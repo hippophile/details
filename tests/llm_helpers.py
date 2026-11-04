@@ -15,7 +15,7 @@ SEGS = ["Καλημέρα σε όλους, ξεκινάμε τη συνάντη�
         "Δεν ξέρουμε ακόμα ποιο μοντέλο θα χρησιμοποιήσουμε."]
 FULL = " ".join(SEGS)
 TEMPLATE = types.SimpleNamespace(id=None, name="x", version=1, body="Lang: {{language}} Title: {{recording_title}}\n"
-                                                                   "{{transcript}}", sha256="a" * 64)
+                                                                   "{{transcript}}", sha256="a" * 64, checks=())
 
 GOOD = {
     "debrief": {"schema_version": 1, "summary": "Συζήτηση για το deploy.",
@@ -84,16 +84,19 @@ def seed_run(db, settings, segs=SEGS, language="el", status="done", title="rec")
     return rid, run_id
 
 
-def sync_prompts(db_url):
+def sync_prompts(db_url, root=None):
+    """Store the prompt files of `root` (default: a tmp copy of the shipped v1 files, see conftest.v1_prompts_dir)."""
     import asyncio
 
+    import conftest
     from details.db import open_pool
     from details.llm import prompts
+    root = root or conftest.v1_prompts_dir()
 
     async def go():
         pool = await open_pool(db_url)
         try:
-            await prompts.sync_prompts(pool)
+            await prompts.sync_prompts(pool, root)
         finally:
             await pool.close()
     asyncio.run(go())

@@ -11,6 +11,7 @@ from .api.insights import add_insights_routes
 from .api.jobs import JOBS, STREAM_HUB, add_jobs_routes
 from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
+from .api.prompts import add_prompts_routes
 from .api.record import add_record_routes
 from .api.recordings import add_recordings_routes
 from .api.stt_runs import add_stt_runs_routes
@@ -30,7 +31,7 @@ from .services.models import load_registry, resolve_path
 from .settings import REPO_ROOT, Settings
 
 BIND_HOST = "127.0.0.1"
-PAGES = ("record", "library", "analyse")
+PAGES = ("record", "library", "analyse", "prompts")
 SETTINGS = web.AppKey("settings", Settings)
 POOL = web.AppKey("pool", AsyncConnectionPool)
 PURGE_TASK = web.AppKey("purge_task", asyncio.Task)
@@ -87,6 +88,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_stt_runs_routes(app, settings, POOL, registry)
     add_analyses_routes(app, settings, POOL, registry)
     add_comparisons_routes(app, settings, POOL, registry)
+    add_prompts_routes(app, settings, POOL)
 
     async def recover_hook(app):
         await recordings.recover_all(app[POOL], settings)
@@ -107,7 +109,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         from .llm.prompts import sync_prompts
         from .runner import steps_analyse
         steps_analyse.bind(app[POOL], memory=memory, settings=settings, hub=hub, lease=lease)
-        await sync_prompts(app[POOL])
+        await sync_prompts(app[POOL], settings.paths.prompts_dir)
 
     async def runner_hook(app):
         svc = JobService(app[POOL], step_registry, registry, joblogs=joblogs)

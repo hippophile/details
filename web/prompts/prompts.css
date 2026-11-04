@@ -1,0 +1,18 @@
+/* Prompts page. Uses the shared tokens (light/dark). */
+.versions { list-style:none; margin:12px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.versions button { width:100%; text-align:left; font-size:15px; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:transparent; color:var(--fg); cursor:pointer; display:flex; flex-wrap:wrap; gap:4px 12px; }
+.versions button[aria-pressed="true"] { border-color:var(--accent); background:rgba(47,111,222,.10); }
+.versions button:focus-visible, #pBody:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.versions .chk { color:var(--accent); font-size:13px; }
+.row.top { justify-content:space-between; }
+.row.top h2 { margin:0; }
+#pBody { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:13px; max-height:420px; overflow:auto; margin:8px 0 0; }
+.editor { margin-top:14px; display:flex; flex-direction:column; gap:8px; }
+.editor textarea, .editor input { width:100%; font:13px/1.45 ui-monospace, Menlo, monospace; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+.editor input { font:15px -apple-system, system-ui, sans-serif; padding:8px 10px; }
+.btn.sm { font-size:14px; padding:8px 16px; }
+.btn.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+#saveMsg.bad, #status.bad { color:var(--bad); }
+#saveMsg:empty, #result:empty, #status:empty { display:none; }
+.meta { font-size:13px; color:var(--muted); }
+.editor[hidden] { display:none; }

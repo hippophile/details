@@ -6,7 +6,7 @@ from details.app import create_app
 
 def stub_web(tmp_path):
     w = tmp_path / "web"
-    for x in ("record", "library", "analyse"):
+    for x in ("record", "library", "analyse", "prompts"):
         (w / x).mkdir(parents=True)
         (w / x / "index.html").write_text(f"<h1>{x} stub</h1>")
         (w / x / "app.js").write_text(f"// {x}")
@@ -18,7 +18,7 @@ def test_pages_served_from_stub_dir(mk_settings, tmp_path):
     w = stub_web(tmp_path)
     async def go():
         async with client_for(create_app(mk_settings(), web_dir=w)) as c:
-            for x in ("record", "library", "analyse"):
+            for x in ("record", "library", "analyse", "prompts"):
                 r = await c.get(f"/{x}" + ("?rec=abc" if x == "analyse" else ""))
                 assert r.status == 200 and await r.text() == f"<h1>{x} stub</h1>"
                 assert (await (await c.get(f"/{x}/app.js")).text()) == f"// {x}"

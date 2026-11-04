@@ -1,6 +1,6 @@
-// Renders the Record | Library | Analyse bar into <nav id="nav">, highlighting the current page.
+// Renders the Record | Library | Analyse | Prompts bar into <nav id="nav">, highlighting the current page.
 (function () {
-  const pages = [["Record", "/record"], ["Library", "/library"], ["Analyse", "/analyse"]];
+  const pages = [["Record", "/record"], ["Library", "/library"], ["Analyse", "/analyse"], ["Prompts", "/prompts"]];
   const host = document.getElementById("nav");
   if (!host) return;
   const here = location.pathname.replace(/\/+$/, "");

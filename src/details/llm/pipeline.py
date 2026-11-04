@@ -4,7 +4,7 @@ and notes one small reduce call for summary/title. Pure with respect to the DB: 
 import json, time
 from dataclasses import dataclass, field
 
-from . import quotes, schemas
+from . import checks, quotes, schemas
 from .chunking import cache_get, cache_key, cache_put, estimate_tokens, split_segments
 from .prompts import render
 from .quotes import norm
@@ -132,14 +132,19 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
     full = "\n".join(segments)
     max_tokens = llm.max_tokens(kind)
     room = max(MIN_ROOM_TOKENS, context - max_tokens - PROMPT_OVERHEAD_TOKENS)
-    schema, validate = schemas.model_schema(kind), lambda d: schemas.validate(kind, d)
+    schema = schemas.model_schema(kind)
+    names = tuple(getattr(template, "checks", ()) or ())      # prompt-ab: code checks of this prompt version
+
+    def validator(text):
+        """Schema first; the template's checks run against the text the model saw (whole transcript or one chunk)."""
+        return lambda d: schemas.validate(kind, d) or checks.run(names, kind, d, text)
     progress = on_progress or (lambda f, m="": None)
 
     def prompt(text):
         return [{"role": "user", "content": render(template.body, text, language, title)}]
 
     if estimate_tokens(full, llm.chars_per_token) <= min(llm.single_pass_max_tokens, room):
-        attempts = await call_validated(chat, kind, prompt(full), schema, validate, max_tokens, on_event)
+        attempts = await call_validated(chat, kind, prompt(full), schema, validator(full), max_tokens, on_event)
         last = attempts[-1]
         content, v, u = (None, 0, 0) if not last.valid else quotes.verify(last.content, full)
         return KindResult(attempts, content, "single", 1, 0, v, u, _sum(attempts))
@@ -167,7 +172,7 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
         else:
             if on_event:
                 on_event("chunk", i + 1, len(chunks))
-            attempts = await call_validated(chat, kind, prompt(text), schema, validate, max_tokens, on_event)
+            attempts = await call_validated(chat, kind, prompt(text), schema, validator(text), max_tokens, on_event)
             if not attempts[-1].valid:
                 return failed(attempts)
             calls.extend(attempts)

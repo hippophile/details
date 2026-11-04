@@ -21,6 +21,7 @@ class Server:
 class Paths:
     data_dir: pathlib.Path
     hf_hub: pathlib.Path
+    prompts_dir: pathlib.Path = REPO_ROOT / "prompts"   # prompt-ab: where prompts/<kind>/vN.md are read and written
 
 
 @dataclass(frozen=True)
@@ -274,6 +275,9 @@ def load_settings(config_path=CONFIG_PATH, env=None, dotenv_path=DOTENV_PATH):
                 if env.get(var):
                     value = tf(env[var]) if tf else env[var]
                     break
+            if value is None and f.default is not dataclasses.MISSING:
+                vals[f.name] = f.default           # optional key: the dataclass default
+                continue
             if value is None:
                 raise SettingsError(f"{config_path}: missing [{name}] {f.name}")
             vals[f.name] = _coerce(name, f.name, f.type, value)

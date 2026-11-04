@@ -32,3 +32,6 @@ pre.rawtext { white-space:pre-wrap; background:var(--bg); border:1px solid var(-
 .analysis { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:4px 8px; border-radius:6px; font-size:14px; cursor:pointer; }
 .analysis:hover, .analysis.sel { background:rgba(47,111,222,.10); }
 .analysis:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.chips .pv-select { align-self:center; font-size:13px; padding:4px 6px; margin-left:-4px; }
+.pv-used { font-size:12px; }
+.pane-head .prompt-line { font-weight:600; color:var(--fg); }

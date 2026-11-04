@@ -37,7 +37,8 @@ def output_counts(kind, content):
         counts = {"sections": len(sections), "bullets": len(all_items)}
     elif kind == "checklist":
         all_items = _items(content, "items")
-        counts = {"items": len(all_items), "done": sum(1 for i in all_items if i.get("done") is True)}
+        counts = {"items": len(all_items), "done": sum(1 for i in all_items if i.get("done") is True),
+                  "with_due": sum(1 for i in all_items if i.get("due"))}
     elif kind == "tags":
         all_items = _items(content, "tags")
         counts = {"tags": len(all_items)}
@@ -224,8 +225,10 @@ async def get(pool, registry, comparison_id):
                 continue
             invalid = kd["schema_valid"] is False
             out = None if invalid else kd["output"]
+            prompt = {"name": kd["prompt_name"], "version": kd["prompt_version"], "checks": kd["prompt_checks"]} \
+                if kd["prompt_version"] is not None else None
             sides[s.lower()] = {"status": kd["status"], "invalid": invalid, "error": kd["error"],
-                                "wall_ms": kd["wall_ms"],
+                                "wall_ms": kd["wall_ms"], "prompt": prompt,
                                 "counts": output_counts(kind, out["content"]) if out else None,
                                 "content": out["content"] if out else None}
         if sides["a"] or sides["b"]:

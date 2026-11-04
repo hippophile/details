@@ -24,7 +24,7 @@ def test_notes_counts_sections_and_bullets():
 def test_checklist_items_done_unverified():
     c = good_checklist(5, 2)
     c["items"][4]["verified"] = False
-    assert output_counts("checklist", c) == {"items": 5, "done": 2, "unverified": 1}
+    assert output_counts("checklist", c) == {"items": 5, "done": 2, "with_due": 0, "unverified": 1}
 
 
 def test_tags_counts():
@@ -38,3 +38,11 @@ def test_empty_or_odd_content_never_raises(kind):
     counts = output_counts(kind, {})
     assert counts["unverified"] == 0 and all(v == 0 for v in counts.values())
     assert output_counts(kind, None)["unverified"] == 0
+
+
+def test_checklist_with_due_counts_items_that_have_a_due_date():
+    c = good_checklist(4, 0)
+    c["items"][0]["due"] = "2026-11-12"
+    c["items"][2]["due"] = "2026-12-01"
+    assert output_counts("checklist", c)["with_due"] == 2
+    assert output_counts("checklist", good_checklist(3, 1))["with_due"] == 0

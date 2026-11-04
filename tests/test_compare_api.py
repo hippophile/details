@@ -127,8 +127,8 @@ def test_outputs_have_counts_invalid_and_no_outputs(db, mk_settings):
         cid = (await (await post(c, body(rid, side(a, ga), side(b, gb)))).json())["id"]
         d = await (await c.get(f"/api/comparisons/{cid}")).json()
         ck = d["outputs"]["checklist"]
-        assert ck["a"]["counts"] == {"items": 5, "done": 2, "unverified": 0}
-        assert ck["b"]["counts"] == {"items": 3, "done": 0, "unverified": 0}
+        assert ck["a"]["counts"] == {"items": 5, "done": 2, "with_due": 0, "unverified": 0}
+        assert ck["b"]["counts"] == {"items": 3, "done": 0, "with_due": 0, "unverified": 0}
         assert ck["a"]["content"]["items"][0]["text"] == "i0"
         de = d["outputs"]["debrief"]
         assert de["a"]["counts"]["decisions"] == 1 and de["a"]["invalid"] is False

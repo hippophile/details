@@ -6,7 +6,7 @@ from aiohttp import web
 from psycopg.types.json import Jsonb
 
 from ..llm import markdown
-from ..llm.prompts import latest_templates
+from ..llm.prompts import latest_templates, versioned_templates
 from ..llm.schemas import KINDS
 from ..services import library
 from ..services.jobs import JobError
@@ -18,7 +18,10 @@ ACTIVE = ("queued", "running")
 RUN_COLS = ("a.id, a.group_id, a.stt_run_id, a.kind, a.model_id, a.output_language, a.status, a.error, a.wall_ms, "
             "a.tokens_in, a.tokens_out, a.tok_per_s, a.finish_reason, a.schema_valid, a.validation_errors, "
             "a.retry_of, a.params, a.created_at, a.started_at, a.finished_at, "
-            "a.raw_response->>'text' AS raw_text, o.id AS output_id, o.schema_version, o.content")
+            "a.raw_response->>'text' AS raw_text, o.id AS output_id, o.schema_version, o.content, "
+            "(SELECT t.version FROM prompt_template t WHERE t.id=a.prompt_template_id) AS prompt_version, "
+            "(SELECT t.name FROM prompt_template t WHERE t.id=a.prompt_template_id) AS prompt_name, "
+            "(SELECT t.checks FROM prompt_template t WHERE t.id=a.prompt_template_id) AS prompt_checks")
 
 
 class StartError(Exception):
@@ -27,8 +30,10 @@ class StartError(Exception):
         self.status, self.message = status, message
 
 
-async def start_analysis(pool, jobs, registry, settings, stt_run_id, model_id, kinds, output_language="transcript"):
-    """Insert one queued analysis_run per kind + enqueue lm_load -> analyse -> lm_unload. -> (group_id, job_id)."""
+async def start_analysis(pool, jobs, registry, settings, stt_run_id, model_id, kinds, output_language="transcript",
+                         prompt_versions=None):
+    """Insert one queued analysis_run per kind + enqueue lm_load -> analyse -> lm_unload. -> (group_id, job_id).
+    prompt_versions {kind: version} picks an exact prompt version per kind; the others use the latest."""
     entry = registry.llm.get(model_id) if isinstance(model_id, str) else None
     if entry is None:
         raise StartError(422, f"'{model_id}' is not an LLM model" if isinstance(model_id, str) and model_id in registry.stt
@@ -45,7 +50,23 @@ async def start_analysis(pool, jobs, registry, settings, stt_run_id, model_id, k
         raise StartError(404, "transcript run not found")
     if run["status"] != "done":
         raise StartError(422, f"the transcript run is {run['status']}: wait until it is done")
+    picks = {}
+    if prompt_versions is not None:
+        if not isinstance(prompt_versions, dict):
+            raise StartError(422, "prompt_versions must be an object {kind: version}")
+        for k, v in prompt_versions.items():
+            if k not in KINDS or k not in kinds:
+                raise StartError(422, f"prompt_versions: '{k}' is not one of the requested kinds")
+            if type(v) is not int:
+                raise StartError(422, f"prompt_versions: the version of {k} must be a whole number")
+            picks[k] = v
     templates = await latest_templates(pool)
+    if picks:
+        chosen = await versioned_templates(pool, picks)
+        for k, v in picks.items():
+            if k not in chosen:
+                raise StartError(422, f"prompt_versions: {k} has no version {v}")
+        templates.update(chosen)
     missing = [k for k in kinds if k not in templates]
     if missing:
         raise StartError(422, f"no prompt template for {', '.join(missing)} (run `make prompts`)")
@@ -116,6 +137,8 @@ def _assemble(rows, registry):
             p = last["params"] or {}
             kinds.append({"kind": k, "status": last["status"], "run_id": str(last["id"]), "error": last["error"],
                           "schema_valid": last["schema_valid"], "validation_errors": last["validation_errors"],
+                          "prompt_version": last["prompt_version"], "prompt_name": last["prompt_name"],
+                          "prompt_checks": list(last["prompt_checks"] or []),
                           "attempts": len(chain), "wall_ms": wall, "tokens_in": tin, "tokens_out": tout,
                           "tok_per_s": round(tout / (wall / 1000), 1) if wall and tout else None,
                           "finish_reason": last["finish_reason"], "mode": p.get("mode"), "chunks": p.get("chunks"),
@@ -131,6 +154,7 @@ def _assemble(rows, registry):
                     "model_label": m.label if m else first["model_id"], "output_language": first["output_language"],
                     "status": _group_status([k["status"] for k in kinds]),
                     "job_id": next((r["params"].get("job_id") for r in rs if (r["params"] or {}).get("job_id")), None),
+                    "prompts": {k["kind"]: k["prompt_version"] for k in kinds if k["prompt_version"] is not None},
                     "created_at": min(r["created_at"] for r in rs).isoformat(), "wall_ms": wall,
                     "tokens_in": sum(k["tokens_in"] for k in kinds), "tokens_out": tout,
                     "tok_per_s": round(tout / (wall / 1000), 1) if wall and tout else None,
@@ -167,7 +191,8 @@ def add_analyses_routes(app, settings, pool_key, registry):
         try:
             gid, jid = await start_analysis(pool(request), request.app[JOBS], registry, settings,
                                             request.match_info["id"], body.get("model_id"), body.get("kinds"),
-                                            body.get("output_language", "transcript"))
+                                            body.get("output_language", "transcript"),
+                                            body.get("prompt_versions"))
         except StartError as e:
             return err(e.message, e.status)
         return web.json_response({"group_id": gid, "job_id": jid}, status=202)

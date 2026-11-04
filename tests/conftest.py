@@ -1,5 +1,5 @@
 """Shared fixtures: settings factory, async test client, and the isolated test database."""
-import contextlib, pathlib, re
+import atexit, contextlib, functools, pathlib, re, shutil, tempfile
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -9,9 +9,21 @@ from details.settings import REPO_ROOT, load_settings, read_dotenv
 MIGRATIONS = REPO_ROOT / "db" / "migrations"
 
 
+@functools.cache
+def v1_prompts_dir():
+    """A tmp copy of the shipped v1 prompt files: the default `[paths] prompts_dir` of every test, so no test reads
+    (v2 of checklist) or writes the repo's prompts/. Tests that need other versions pass their own dir."""
+    tmp = tempfile.mkdtemp(prefix="details-prompts-v1-")
+    atexit.register(shutil.rmtree, tmp, ignore_errors=True)
+    for f in sorted((REPO_ROOT / "prompts").glob("*/v1.md")):
+        (pathlib.Path(tmp) / f.parent.name).mkdir(exist_ok=True)
+        shutil.copy(f, pathlib.Path(tmp) / f.parent.name / f.name)
+    return pathlib.Path(tmp)
+
+
 def make_settings(data_dir, db_url=None, **env):
     """Settings from the repo config.toml with an explicit env; never reads the real env or .env."""
-    e = {"DETAILS_PATHS_DATA_DIR": str(data_dir), **env}
+    e = {"DETAILS_PATHS_DATA_DIR": str(data_dir), "DETAILS_PATHS_PROMPTS_DIR": str(v1_prompts_dir()), **env}
     if db_url:
         e["DATABASE_URL"] = db_url
     return load_settings(env=e, dotenv_path=None)

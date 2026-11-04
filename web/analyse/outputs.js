@@ -23,7 +23,17 @@
     const tps = g.tok_per_s ? ` · ${g.tok_per_s} tok/s` : "";
     return `${groupLabel(g)} · ${g.tokens_in} in / ${g.tokens_out} out tokens${tps}`;
   }
-  const exported = { canStart, modelLabel, itemMeta, footer, groupLabel };
+  // Prompt versions (prompt-ab). `versions` = {kind: [1, 2, ...]} from /api/prompts.
+  function pickerKinds(versions, ticked) { return ticked.filter((k) => (versions[k] || []).length > 1); }
+  function promptVersionsBody(versions, picks, ticked) {
+    const out = {};
+    for (const k of pickerKinds(versions, ticked)) if (picks[k] != null && picks[k] !== "") out[k] = Number(picks[k]);
+    return out;
+  }
+  function promptsText(prompts, versions) {
+    return Object.keys(prompts || {}).filter((k) => (versions[k] || []).length > 1).map((k) => `${k} v${prompts[k]}`).join(", ");
+  }
+  const exported = { canStart, modelLabel, itemMeta, footer, groupLabel, pickerKinds, promptVersionsBody, promptsText };
   if (typeof module !== "undefined" && module.exports) { module.exports = exported; return; }
 
   // ---- page ---------------------------------------------------------------------------------------------
@@ -32,11 +42,42 @@
   const KINDS = ["debrief", "notes", "checklist", "tags"];
   const TITLES = { debrief: "Debrief", notes: "Notes", checklist: "Checklist", tags: "Tags" };
   let models = [], doneRuns = [], source = "", watching = null, shown = null, tab = null;
+  let versions = {};            // {kind: [version numbers]}; a version select shows only for kinds with more than one
+
+  async function loadVersions() {
+    try {
+      const j = await api("/api/prompts");
+      versions = Object.fromEntries(j.kinds.map((k) => [k.kind, k.versions.map((v) => v.version)]));
+    } catch (e) { versions = {}; }
+    syncPickers();
+  }
+  function syncPickers() {
+    const ticked = kindsOn(), want = pickerKinds(versions, ticked);
+    for (const chip of document.querySelectorAll("#aiSlot .chip")) {
+      const kind = chip.querySelector("input[data-kind]").dataset.kind;
+      let sel = chip.parentElement.querySelector(`select[data-pv="${kind}"]`);
+      if (!want.includes(kind)) { if (sel) sel.remove(); continue; }
+      if (sel) continue;
+      sel = el("select", { className: "pv-select" });
+      sel.dataset.pv = kind;
+      sel.setAttribute("aria-label", `Prompt version for ${TITLES[kind]}`);
+      const latest = Math.max(...versions[kind]);
+      for (const v of versions[kind]) sel.appendChild(el("option", { value: String(v) }, `v${v}` + (v === latest ? " (latest)" : "")));
+      sel.value = String(latest);
+      chip.after(sel);
+    }
+  }
+  function picks() {
+    const out = {};
+    for (const s of document.querySelectorAll("#aiSlot select[data-pv]")) out[s.dataset.pv] = s.value;
+    return out;
+  }
 
   function msg(text, bad) { $("aiMsg").textContent = text || ""; $("aiMsg").style.color = bad ? "var(--bad)" : ""; }
   function kindsOn() { return Array.from(document.querySelectorAll("#aiSlot input[data-kind]")).filter((i) => i.checked).map((i) => i.dataset.kind); }
 
   function syncStart() {
+    syncPickers();
     const m = models.find((x) => x.id === $("aiModel").value);
     $("aiStart").disabled = !canStart({ model: m && m.installed ? m.id : "", kinds: kindsOn(), run: source, busy: !!watching });
     $("aiReason").textContent = !doneRuns.length ? "Run a speech model first: the AI works on a finished transcript." :
@@ -84,6 +125,8 @@
         row.setAttribute("role", "button");
         row.appendChild(el("span", { className: "label" }, g.label));
         row.appendChild(el("span", { className: "st " + g.status }, g.status));
+        const used = promptsText(g.prompts, versions);
+        if (used) row.appendChild(el("span", { className: "pv-used meta" }, used));
         const open = (ev) => { ev.stopPropagation(); pick(run); show(g.group_id); };
         row.onclick = open;
         row.onkeydown = (ev) => { if (ev.target === row && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); open(ev); } };
@@ -99,7 +142,8 @@
     $("aiStart").disabled = true;
     try {
       const r = await api(`/api/stt-runs/${source}/analyses`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_id: model, kinds: kindsOn(), output_language: $("aiLang").value }) });
+        body: JSON.stringify({ model_id: model, kinds: kindsOn(), output_language: $("aiLang").value,
+          prompt_versions: promptVersionsBody(versions, picks(), kindsOn()) }) });
       msg("");
       watch(r.job_id, r.group_id);
     } catch (e) { msg("Could not start: " + e.message, true); syncStart(); }
@@ -261,4 +305,5 @@
     try { await api(`/api/jobs/${watching.id}/cancel`, { method: "POST" }); msg("Cancelling..."); } catch (e) { msg("Cancel failed: " + e.message, true); }
   };
   loadModels();
+  loadVersions();
 })();

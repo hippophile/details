@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompts</title>
+<link rel="stylesheet" href="/shared/shared.css">
+<link rel="stylesheet" href="/prompts/prompts.css">
+</head>
+<body>
+<nav id="nav" aria-label="Pages"></nav>
+<main>
+  <h1>Prompts</h1>
+
+  <div class="card">
+    <h2>Prompt</h2>
+    <div class="row">
+      <div><label for="kindList">Output</label><br><select id="kindList"></select></div>
+    </div>
+    <ul id="versionList" class="versions" aria-label="Versions"></ul>
+  </div>
+
+  <div class="card" id="viewCard">
+    <div class="row top">
+      <h2 id="pTitle">Select a version</h2>
+      <button class="btn sm" id="editBtn" type="button" disabled>Edit as new version</button>
+    </div>
+    <div class="meta" id="pMeta"></div>
+    <pre id="pBody" tabindex="0" aria-label="Prompt text (read only)"></pre>
+
+    <div id="editor" class="editor" hidden>
+      <label for="editText">New text (a copy of the version above; the old version is never changed)</label>
+      <textarea id="editText" rows="20" spellcheck="false"></textarea>
+      <div class="meta">Placeholders: {{transcript}} (required), {{language}}, {{recording_title}}.</div>
+      <label for="editNote">Note (optional, one line)</label>
+      <input id="editNote" type="text" maxlength="200" autocomplete="off">
+      <div class="row">
+        <button class="btn sm" id="saveBtn" type="button" disabled>Save</button>
+        <button class="btn sm ghost" id="cancelBtn" type="button">Cancel</button>
+        <div id="saveMsg" class="meta" role="status" aria-live="polite"></div>
+      </div>
+      <div class="meta">Saving only checks the placeholders. Whether the model still answers in the right shape is only checked when a run happens.</div>
+      <div class="meta">Saving creates a new file in the prompts folder: commit it to git, and pull before saving on another machine.</div>
+    </div>
+    <div id="result" class="meta" role="status" aria-live="polite"></div>
+  </div>
+  <div id="status" class="meta" role="status" aria-live="polite"></div>
+</main>
+
+<script src="/shared/nav.js"></script>
+<script src="/prompts/prompts.js"></script>
+</body>
+</html>
