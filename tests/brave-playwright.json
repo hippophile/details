@@ -1,0 +1,1 @@
+{"browser": {"browserName": "chromium", "launchOptions": {"headless": true, "args": ["--autoplay-policy=no-user-gesture-required", "--use-fake-ui-for-media-stream", "--disable-audio-output"], "executablePath": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"}, "contextOptions": {"permissions": ["microphone"]}}}
