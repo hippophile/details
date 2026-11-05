@@ -317,3 +317,27 @@ def test_rolling_files_and_prompt_hash_are_kept(tmp_path, monkeypatch):
         r = json.loads((d / "rolling.json").read_text())
         assert r["seq"] == 1 and len(r["prompt_sha256"]) == 64 and r["notes"][0]["text"] == "Θέμα"
     run(go())
+
+
+def test_no_update_starts_while_paused_and_none_is_forced_on_continue(tmp_path, monkeypatch):
+    async def go():
+        e = live_env(tmp_path, monkeypatch, DETAILS_LIVE_NOTES_EVERY_MIN="2")
+        chat = FakeChat(default=reply([item("Θέμα", "συζητάμε το θέμα 0")]))
+        live, m = await start(e, tmp_path, chat, monkeypatch)
+        w = await commit_one(live, m)
+        await e.clock.advance(120)
+        await wait_until(lambda: len(chat.calls) == 1, what="first update")
+        await wait_until(lambda: m.of("live_notes"), what="notes")
+        live.pause()
+        await feed(live, w, PHRASE)                               # more text arrives (a test-side shortcut)
+        await wait_until(lambda: len(m.of("live_commit")) >= 2, what="second commit")
+        await e.clock.advance(120)
+        await e.clock.advance(120)
+        assert len(chat.calls) == 1                               # the timer fired twice, nothing started
+        live.continue_()
+        await asyncio.sleep(0.2)
+        assert len(chat.calls) == 1                               # Continue does not force an update
+        await e.clock.advance(120)
+        await wait_until(lambda: len(chat.calls) == 2, what="update after continue")
+        await live.close(1.0)
+    run(go())

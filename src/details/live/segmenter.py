@@ -104,8 +104,12 @@ class LiveSegmenter:
         return out
 
     def flush(self):
-        """End of the take: commit the pending speech, if any."""
+        """End of the take (or a pause): commit the pending speech, if any."""
         if len(self.buf) and self._speech_secs(self.buf) >= MIN_SPEECH_S:
-            return [self._commit(len(self.buf))]
+            c = self._commit(len(self.buf))
+            self._checked = self.base
+            return [c]
+        self.base += len(self.buf)                    # the short buffer is dropped: later times must not drift
         self.buf = np.zeros(0, np.float32)
+        self.last_partial = self._checked = self.base
         return []

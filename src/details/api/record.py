@@ -4,7 +4,7 @@ import asyncio, json, logging, uuid
 from aiohttp import WSMsgType, web
 
 from ..live.session import LIVE
-from ..services import recordings, scripts
+from ..services import recordings, scripts, wavstream
 
 log = logging.getLogger("details.record")
 SESSIONS = web.AppKey("record_sessions", dict)
@@ -101,11 +101,30 @@ def add_record_routes(app, settings, pool_key):
                             found.grace_task.cancel()
                             found.grace_task = None
                         found.state, found.attached, sess = "recording", True, found
-                        await ws.send_json({"type": "ready", "recording_id": found.id})
+                        await ws.send_json({"type": "ready", "recording_id": found.id, "paused": found.paused})
                         if found.live is not None:
                             found.live.attach(ws.send_json, resume=True)
                 elif kind == "gap" and sess:
                     sess.gaps.append({"ms": m.get("ms"), "at_frames": sess.writer.frames})
+                elif kind in ("pause", "continue"):
+                    # Never an error (the page turns any `error` into the end of the take): no session, a duplicate
+                    # pause and a continue while not paused are ignored. Never touches writer.write/sync/close.
+                    changed = sess is not None and sess.state == "recording" and \
+                        (sess.pause() if kind == "pause" else sess.resume_audio())
+                    if not changed:
+                        log.info("ignored %s (%s)", kind, "no session" if sess is None else "no change")
+                        continue
+                    try:
+                        wavstream.write_meta(sess.dir, sess.meta("recording"))
+                    except OSError:
+                        log.exception("meta write after %s failed for %s", kind, sess.id)
+                    live = sess.live
+                    if live is not None and not live.failed:
+                        try:
+                            live.pause() if kind == "pause" else live.continue_()
+                        except Exception as e:
+                            log.exception("live %s raised for %s; live is off", kind, sess.id)
+                            live.mark_failed(e)
                 elif kind == "stop" and sess:
                     await close_live(sess)
                     res = await recordings.finalize(pool, settings, sess)

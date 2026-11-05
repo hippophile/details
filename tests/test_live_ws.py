@@ -159,3 +159,19 @@ def test_app_cleanup_releases_the_lease_and_kills_the_child(db, db_url, mk_setti
     run_ws(mk_settings, db_url, monkeypatch, tmp_path, fn)       # the client context closes the app here
     assert holder["lease"].owner is None
     assert not any(pid_alive(p) for p in pids(holder["x"].pidfile))
+
+
+def test_pause_over_the_websocket_flushes_a_commit_and_shows_paused(db, db_url, mk_settings, monkeypatch, tmp_path):
+    async def fn(c, s, x):
+        ws, log = await ws_start(c)
+        await log.wait(lambda l: l.of("live_state", state="listening"), what="listening")
+        await ws_send(ws, script_pcm(("t", 2.0)))
+        await ws.send_json({"type": "pause"})
+        await log.wait(lambda l: l.of("live_commit"), what="flush commit")
+        await log.wait(lambda l: l.of("live_state", message="paused"), what="paused state")
+        await ws.send_json({"type": "continue"})
+        await log.wait(lambda l: l.of("live_state", message="listening"), what="listening again")
+        await ws.send_json({"type": "stop"})
+        await log.wait(lambda l: l.of("saved"), what="saved")
+        assert not log.of("error")
+    run_ws(mk_settings, db_url, monkeypatch, tmp_path, fn)

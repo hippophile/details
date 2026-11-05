@@ -17,7 +17,7 @@ Archived: recording (WS `/api/record/ws`, `WavWriter`, `finalize`, `Session.gaps
 ## Decision (revised after review, 2026-11-05)
 1. **Buttons:**
    - `#mic` stays and is labelled **Start**. `#pause` is labelled Pause, and Continue while paused. `#end` is labelled **End**.
-   - Pause and End are enabled once a recording id exists and the page is not stopping: `recId != null && !stopping`. They do **not** depend on `ready`, so End and Pause work during a reconnect. Before the first `ready`, Pause is disabled and End behaves as Stop does today (the stop is queued).
+   - Pause is enabled once a recording id exists and the page is not stopping (`recId != null && !stopping`); End whenever a recording is open and not stopping. Neither depends on `ready`, so both work during a reconnect. Before the first `ready` (no id yet), Pause is disabled and End behaves as Stop does today (the stop is queued).
    - While "Finishing…", all three are disabled. `setUi`, `finish`, `fail` and `start` reset the paused flag and the labels, so nothing leaks into the next take.
    - Texts that say "Mic on" now say "Start".
 2. **Ordered control messages:**
@@ -57,7 +57,7 @@ Archived: recording (WS `/api/record/ws`, `WavWriter`, `finalize`, `Session.gaps
 - **Page JS test (node):** while paused, `onBlock` queues nothing, the timer doesn't advance, the button reads "Continue", and End is enabled.
 - **Negative tests:**
   - `continue` without `pause` is ignored.
-  - `pause` before `ready` → error "not recording".
+  - `pause` / `continue` with no session (before `start`/`ready`) → silently ignored, no `error` (Decision 3).
   - The gap detector does not send `gap` during a 3 s pause.
 - **Live:** pause flushes a commit (fake worker). The notes timer doesn't fire while paused.
 - **Brave e2e:**

@@ -83,3 +83,13 @@ def test_flush_commits_pending_speech_and_nothing_else():
     quiet = LiveSegmenter(-45.0)
     run(quiet, silence(2))
     assert quiet.flush() == []
+
+
+def test_flush_of_a_short_buffer_moves_base_so_later_times_do_not_drift():
+    seg = LiveSegmenter(-45.0, partials=False)
+    ev, pos = run(seg, tone(0.2))                                 # under the 0.3 s speech minimum
+    assert ev == [] and seg.flush() == []
+    assert seg.base == pos == int(0.2 * SR) and seg._checked == pos and seg.last_partial == pos
+    ev2, _ = run(seg, script_pcm(("t", 1.0), ("s", 0.8)), start_frame=pos)
+    (c,) = commits(ev2)
+    assert c.start_ms == 200                                      # not 0

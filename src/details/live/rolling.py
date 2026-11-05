@@ -60,6 +60,7 @@ class Rolling:
     def __init__(self, session):
         self.s = session
         self._last_n = 0
+        self.paused = False                                         # a recording pause: no update STARTS meanwhile
         self._seq = 0
         self._loop_task = self._update_task = None
 
@@ -81,6 +82,8 @@ class Rolling:
         s = self.s
         while True:
             await s.mgr.clock.sleep(s.interval_s)
+            if self.paused:
+                continue                                            # an in-flight update may finish; none starts
             if self._update_task is not None and not self._update_task.done():
                 continue                                            # an update is still running: skip this tick
             if len(s.commits) == self._last_n:

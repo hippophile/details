@@ -1,4 +1,4 @@
-- [ ] 1. Tests first, then run them, observe the failures and keep the red output.
+- [x] 1. Tests first, then run them, observe the failures and keep the red output.
   - WS:
     - pause/continue accepted
     - idempotent duplicate pause
@@ -17,17 +17,17 @@
     - segmenter flush moves `base`
     - rolling skips ticks while paused (fake clock)
     - pause with live off or failed is a no-op
-- [ ] 2. Server: `api/record.py` branch; `Session.paused`/`pauses` + `write_meta`; `meta()`/`recover_all`/`finalize`; `ready.paused`.
-- [ ] 3. Live: `LiveSession.pause()/continue_()`, segmenter flush fix, Rolling paused flag, `live_state` "paused".
-- [ ] 4. Page:
+- [x] 2. Server: `api/record.py` branch; `Session.paused`/`pauses` + `write_meta`; `meta()`/`recover_all`/`finalize`; `ready.paused`.
+- [x] 3. Live: `LiveSession.pause()/continue_()`, segmenter flush fix, Rolling paused flag, `live_state` "paused".
+- [x] 4. Page:
   - `pause.js` state machine
   - three buttons (`#mic` = Start, `#pause`, `#end`)
   - sentinels in the queue
   - meter-only while paused
   - texts "Start"
   - update `test_record_page.py` needles and the e2e helpers (`#end`)
-- [ ] 5. `make test` fully green; `openspec validate record-pause --strict`.
-- [ ] 6. Brave e2e (`tests/brave-playwright.json`, getUserMedia override):
+- [x] 5. `make test` fully green; `openspec validate record-pause --strict`.
+- [x] 6. Brave e2e (`tests/brave-playwright.json`, getUserMedia override):
   - Steps: 6 s of audio, pause for 3 s, continue for 4 s, then End.
   - Expect: duration ≈ 10 s, 1 pause stored.
   - Also: one pause done during a forced WS reconnect.

@@ -193,3 +193,109 @@ def test_oversized_message_closes_socket_take_recoverable(db, db_url, mk_setting
     assert read_json(d / "meta.json")["status"] == "recording"
     with wave.open(str(d / "rec.wav")) as w:   # header already patched or repairable
         pass
+
+
+# ---- record-pause: pause / continue ------------------------------------------------------------------------------
+
+async def wait_meta(d, pred, what="meta"):
+    for _ in range(100):
+        m = read_json(d / "meta.json")
+        if pred(m):
+            return m
+        await asyncio.sleep(0.03)
+    raise AssertionError(f"timed out waiting for {what}")
+
+
+def test_pause_continue_stores_one_pause(db, db_url, mk_settings):
+    async def fn(c, s):
+        ws = await c.ws_connect("/api/record/ws")
+        await start(ws)
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "pause"})
+        d = rec_dirs(s)[0]
+        m = await wait_meta(d, lambda m: m.get("pauses"), "pause in meta")
+        assert m["pauses"][0]["at_frames"] == SR and m["pauses"][0]["open"] is True
+        await send_audio(ws, 2)                   # a misbehaving client: the server trusts it and writes it
+        await ws.send_json({"type": "continue"})
+        m = await wait_meta(d, lambda m: m["pauses"] and not m["pauses"][0].get("open"), "pause closed")
+        assert m["pauses"][0]["wall_paused_ms"] >= 0
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "stop"})
+        return await ws.receive_json()
+    saved = with_app(mk_settings, db_url, fn)
+    assert saved["type"] == "saved" and abs(saved["recording"]["duration_ms"] - 4000) <= 50
+    (r,) = rows(db)
+    (p,) = r[7]["pauses"]
+    assert p["at_frames"] == SR and "open" not in p and p["wall_paused_ms"] >= 0
+
+
+def test_duplicate_pause_is_idempotent_and_never_an_error(db, db_url, mk_settings):
+    async def fn(c, s):
+        ws = await c.ws_connect("/api/record/ws")
+        await start(ws)
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "pause"})
+        await ws.send_json({"type": "pause"})
+        await ws.send_json({"type": "continue"})
+        await ws.send_json({"type": "continue"})
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "stop"})
+        return await ws.receive_json()               # an `error` would arrive first
+    assert with_app(mk_settings, db_url, fn)["type"] == "saved"
+    assert len(rows(db)[0][7]["pauses"]) == 1
+
+
+def test_continue_without_pause_and_no_session_are_ignored(db, db_url, mk_settings):
+    async def fn(c, s):
+        ws = await c.ws_connect("/api/record/ws")
+        await ws.send_json({"type": "pause"})        # before start: no session
+        await ws.send_json({"type": "continue"})
+        ready = await start(ws)
+        assert ready["type"] == "ready"              # not an error
+        await ws.send_json({"type": "continue"})     # not paused
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "stop"})
+        return await ws.receive_json()
+    assert with_app(mk_settings, db_url, fn)["type"] == "saved"
+    assert "pauses" not in rows(db)[0][7]
+
+
+def test_end_while_paused_closes_the_pause_open(db, db_url, mk_settings):
+    async def fn(c, s):
+        ws = await c.ws_connect("/api/record/ws")
+        await start(ws)
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "pause"})
+        await ws.send_json({"type": "stop"})
+        return await ws.receive_json()
+    saved = with_app(mk_settings, db_url, fn)
+    assert saved["type"] == "saved" and abs(saved["recording"]["duration_ms"] - 1000) <= 50
+    (p,) = rows(db)[0][7]["pauses"]
+    assert p["open"] is True and p["at_frames"] == SR and p["wall_paused_ms"] >= 0
+
+
+def test_ready_after_resume_carries_paused(db, db_url, mk_settings):
+    async def fn(c, s):
+        ws = await c.ws_connect("/api/record/ws")
+        rid = (await start(ws))["recording_id"]
+        await send_audio(ws, 1)
+        await ws.send_json({"type": "pause"})
+        await wait_meta(rec_dirs(s)[0], lambda m: m.get("pauses"))
+        await ws.close()
+        await asyncio.sleep(0.2)
+        ws2 = await c.ws_connect("/api/record/ws")
+        await ws2.send_json({"type": "resume", "recording_id": rid})
+        r1 = await ws2.receive_json()
+        await ws2.send_json({"type": "continue"})
+        await send_audio(ws2, 1)
+        await ws2.close()
+        await asyncio.sleep(0.2)
+        ws3 = await c.ws_connect("/api/record/ws")
+        await ws3.send_json({"type": "resume", "recording_id": rid})
+        r2 = await ws3.receive_json()
+        await ws3.send_json({"type": "stop"})
+        return r1, r2, await ws3.receive_json()
+    r1, r2, saved = with_app(mk_settings, db_url, fn, DETAILS_RECORD_GRACE_S="30")
+    assert r1["type"] == "ready" and r1["paused"] is True
+    assert r2["type"] == "ready" and r2["paused"] is False
+    assert saved["type"] == "saved" and len(rows(db)[0][7]["pauses"]) == 1

@@ -1,5 +1,5 @@
 """Recording sessions: create, finalize (WAV -> FLAC master + row), startup recovery."""
-import asyncio, datetime, logging, pathlib, shutil, uuid
+import asyncio, datetime, logging, pathlib, shutil, time, uuid
 from dataclasses import dataclass, field
 
 from psycopg.types.json import Jsonb
@@ -29,6 +29,9 @@ class Session:
     writer: wavstream.WavWriter | None = None
     state: str = "recording"          # recording | interrupted | finalizing | finalized
     gaps: list = field(default_factory=list)
+    paused: bool = False
+    pauses: list = field(default_factory=list)   # [{at_frames, wall_paused_ms[, open]}]; `open` = ended while paused
+    pause_t0: float | None = None
     grace_task: asyncio.Task | None = None
     attached: bool = False
     live: object | None = None        # live-assistant: a live.session.LiveSession (its commits become a preview stt_run)
@@ -37,7 +40,30 @@ class Session:
 
     def meta(self, status):
         return {"id": self.id, "title": self.title, "script_id": self.script_id, "started_at": self.started_at,
-                "sample_rate": self.sample_rate, "status": status, "gaps": self.gaps}
+                "sample_rate": self.sample_rate, "status": status, "gaps": self.gaps, "pauses": self.pauses}
+
+    def pause(self):
+        """Idempotent. -> True if it changed anything. Only reads the writer's frame counter, never writes."""
+        if self.paused:
+            return False
+        self.paused, self.pause_t0 = True, time.monotonic()
+        self.pauses.append({"at_frames": self.writer.frames, "wall_paused_ms": 0, "open": True})
+        return True
+
+    def resume_audio(self):
+        """The `continue` message. Idempotent. -> True if it changed anything."""
+        if not self.paused:
+            return False
+        self._close_pause(open_=False)
+        return True
+
+    def _close_pause(self, open_):
+        p = self.pauses[-1]
+        if self.pause_t0 is not None:             # after a crash the elapsed time is unknown and stays 0
+            p["wall_paused_ms"] = round((time.monotonic() - self.pause_t0) * 1000)
+        if not open_:
+            p.pop("open", None)
+        self.paused, self.pause_t0 = False, None
 
 
 def recordings_dir(settings):
@@ -118,6 +144,8 @@ async def finalize(app_pool, settings, s, *, recovered=False, interrupted=False)
         if s.state == "finalized":
             return s.result
         s.state = "finalizing"
+        if s.paused and s.pauses:
+            s._close_pause(open_=True)            # End while paused: keep `open: true`, elapsed time so far
         if s.writer:
             s.writer.close()
         wav = s.dir / "rec.wav"
@@ -136,6 +164,8 @@ async def finalize(app_pool, settings, s, *, recovered=False, interrupted=False)
             source["recovered"] = True
         if s.gaps:
             source["gaps"] = s.gaps
+        if s.pauses:
+            source["pauses"] = s.pauses
         title = s.title + (" (recovered)" if recovered else "")
         if ok:
             master = s.dir / "master.flac"
@@ -187,7 +217,8 @@ async def recover_all(app_pool, settings):
             uuid.UUID(meta["id"])
             sess = Session(meta["id"], d, meta.get("title", "Recording"), meta.get("script_id"),
                            meta["started_at"], int(meta.get("sample_rate", settings.record.sample_rate)),
-                           gaps=meta.get("gaps", []))
+                           gaps=meta.get("gaps", []), pauses=meta.get("pauses", []))
+            sess.paused = bool(sess.pauses and sess.pauses[-1].get("open"))
         except (KeyError, ValueError):
             continue
         async with app_pool.connection() as c:  # a crash after the insert but before meta=done

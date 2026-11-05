@@ -153,7 +153,7 @@ def flac_bursts(settings, rid):
 def finish_take(page, want_ms):
     page.wait_for_function(f"blocks >= {want_ms // 100}", timeout=60000)
     t = time.monotonic()
-    page.click("#mic")
+    page.click("#end")
     page.wait_for_selector("#saved:not([hidden])", timeout=20000)
     return time.monotonic() - t, page.evaluate("blocks")
 
@@ -226,6 +226,80 @@ def test_lm_studio_down_still_shows_text_and_saves(db, db_url, tmp_path, monkeyp
     assert srv.settings.lmstudio.url in msg and "Recording and live text continue" in msg
     assert db.execute("SELECT count(*) FROM recording").fetchone()[0] == 1
     assert db.execute("SELECT count(*) FROM stt_run").fetchone()[0] == 1
+
+
+# ---- record-pause: Start / Pause-Continue / End with a fake microphone (live assist off) ---------------------------
+PAUSE_WAV = pathlib.Path(os.environ.get("DETAILS_E2E_GPU_WAV", "/Users/golem/code/play/llm-bench/asr-test/tts_melina.wav"))
+
+
+def pause_take(db, db_url, tmp_path, drive):
+    need_tools()
+    if not PAUSE_WAV.exists():
+        skip(f"{PAUSE_WAV} not found")
+    srv = Server(tmp_path, db_url, None, hub=False)
+    base = srv.start()
+    try:
+        out = browse(PAUSE_WAV, lambda page: drive(page, base))
+    finally:
+        srv.stop()
+    rid, dur, source = db.execute("SELECT id, duration_ms, source FROM recording").fetchone()
+    return out, dur, source
+
+
+def test_pause_continue_end_saves_about_ten_seconds_and_one_pause(db, db_url, tmp_path):
+    shots = pathlib.Path(os.environ.get("DETAILS_E2E_SHOTS", tmp_path / "shots"))
+    shots.mkdir(parents=True, exist_ok=True)
+
+    def drive(page, base):
+        page.goto(base + "/record")
+        assert page.is_disabled("#pause") and page.is_disabled("#end")
+        page.click("#mic")
+        page.wait_for_function("blocks >= 60", timeout=60000)               # 6 s
+        page.click("#pause")
+        page.wait_for_function("document.getElementById('pause').innerText === 'Continue'")
+        timer, blocks_at_pause = page.inner_text("#timer"), page.evaluate("blocks")
+        assert "Paused: nothing is recorded" in page.inner_text("#status") and page.is_enabled("#end")
+        for scheme in ("light", "dark"):
+            page.emulate_media(color_scheme=scheme)
+            page.screenshot(path=str(shots / f"paused-{scheme}.png"), full_page=True)
+        time.sleep(3)                                                       # 3 s paused
+        assert page.evaluate("blocks") == blocks_at_pause and page.inner_text("#timer") == timer
+        page.click("#pause")
+        page.wait_for_function("document.getElementById('pause').innerText === 'Pause'")
+        page.wait_for_function(f"blocks >= {blocks_at_pause + 40}", timeout=60000)   # 4 s more
+        _, blocks = finish_take(page, 0)
+        return blocks, blocks_at_pause
+
+    (blocks, at_pause), dur, source = pause_take(db, db_url, tmp_path, drive)
+    print(f"\nE2E pause: saved {dur} ms, browser blocks {blocks}, pauses {json.dumps(source.get('pauses'))}")
+    assert abs(dur - blocks * 100) <= 50 and abs(dur - 10000) <= 300
+    (p,) = source["pauses"]
+    assert abs(p["at_frames"] - at_pause * 1600) <= 1600 and "open" not in p and 2700 <= p["wall_paused_ms"] <= 3600
+    assert "gaps" not in source
+
+
+def test_pause_across_a_forced_ws_reconnect_keeps_one_pause(db, db_url, tmp_path):
+    def drive(page, base):
+        page.goto(base + "/record")
+        page.click("#mic")
+        page.wait_for_function("blocks >= 30", timeout=60000)
+        page.click("#pause")
+        page.evaluate("ws.close()")                                         # forced drop while paused
+        page.wait_for_function("ready === false")
+        page.wait_for_function("ready === true", timeout=20000)             # reconnected with `resume`
+        page.wait_for_function("document.getElementById('status').innerText.includes('Paused')")
+        assert page.inner_text("#pause") == "Continue"
+        at_pause = page.evaluate("blocks")
+        time.sleep(1)
+        page.click("#pause")
+        page.wait_for_function(f"blocks >= {at_pause + 20}", timeout=60000)
+        _, blocks = finish_take(page, 0)
+        return blocks
+
+    blocks, dur, source = pause_take(db, db_url, tmp_path, drive)
+    print(f"\nE2E pause+reconnect: saved {dur} ms, browser blocks {blocks}, pauses {json.dumps(source.get('pauses'))}")
+    assert abs(dur - blocks * 100) <= 50
+    assert len(source["pauses"]) == 1 and "open" not in source["pauses"][0]
 
 
 # ---- manual real-GPU check (marker gpu + e2e): real Whisper turbo + Gemma E4B, ~3 minutes of real speech ------------

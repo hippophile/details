@@ -2,11 +2,12 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const RATE = 16000, MAX_BUFFER_BLOCKS = 6000;   // 10 min of 100 ms blocks (~19 MB)
+const P = window.RecordPause;     // Start / Pause / End state machine (pause.js, pure functions)
 const MIN_DB = -70, CLIP_DB = -1, DEAD_DB = -60, DEAD_BLOCKS = 100;
 
 let ws, ctx, stream, node;
-let recording = false, stopping = false, ready = false, recId = null;
-let queue = [];                 // blocks (ArrayBuffer) not yet sent
+let recording = false, stopping = false, ready = false, recId = null, paused = false;
+let queue = [];                 // blocks (ArrayBuffer) and pause/continue sentinels not yet sent, in order
 let blocks = 0, clips = 0, quiet = 0, level = MIN_DB, lastBlockAt = 0, reconnectTimer = null;
 let scripts = [], activeTab = 0;
 
@@ -79,11 +80,20 @@ function defaultTitle() {
   return `Recording ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function showError(msg) { $("error").textContent = msg; $("error").hidden = !msg; }
+function applyView() {
+  const v = P.view({ recording, recId, stopping, paused });
+  for (const [id, x] of [["mic", v.mic], ["pause", v.pause], ["end", v.end]]) {
+    $(id).textContent = x.text; $(id).disabled = x.disabled;
+  }
+  $("end").classList.toggle("bad", !!v.end.bad);
+}
+function runStatus() {
+  $("status").textContent = stopping ? "Finishing..." : !ready && recId != null ? "Connection lost - reconnecting (audio is buffered)..."
+    : paused ? P.PAUSED_TEXT : "Recording";
+}
 function setUi(on) {
-  const b = $("mic");
-  b.classList.toggle("bad", on);
-  b.textContent = on ? "Stop" : "Mic on";
-  b.disabled = false;
+  paused = false;
+  applyView();
   $("title").disabled = on;
   $("liveToggle").disabled = on;
 }
@@ -93,26 +103,31 @@ function resetMeter() {
 
 // ---- audio ----------------------------------------------------------------------------------------
 function onBlock({ pcm, rms, peak }) {
-  blocks++; lastBlockAt = performance.now();
-  $("timer").textContent = mmss(blocks / 10);
-  level = rms > level ? rms : level * 0.7 + rms * 0.3;
+  // While paused only the meter and lastBlockAt move (no count, timer, clips, dead-mic or queue): see pause.js
+  const r = P.blockStep({ paused, blocks, clips, quiet, level }, { rms, peak }, performance.now(), { clipDb: CLIP_DB, deadDb: DEAD_DB });
+  level = r.level; lastBlockAt = r.lastBlockAt;
   const clipped = peak > CLIP_DB;
-  if (clipped) { clips++; $("clips").textContent = `${clips} clip${clips === 1 ? "" : "s"}`; $("clips").classList.add("hit"); }
+  if (r.queued) {
+    blocks = r.blocks;
+    $("timer").textContent = mmss(blocks / 10);
+    if (r.clipped) { clips = r.clips; $("clips").textContent = `${clips} clip${clips === 1 ? "" : "s"}`; $("clips").classList.add("hit"); }
+  }
   const thr = threshold();
   $("bar").style.width = pos(level) + "%";
   $("bar").style.background = clipped ? "var(--bad)" : level > thr ? "var(--good)" : "var(--muted)";
   $("levelText").textContent = `${level.toFixed(0)} dB - ` + (clipped ? "clipping, move back" : level < thr ? "silence"
     : level < -40 ? "speech, but quiet" : level > -8 ? "too loud" : "good");
-  quiet = peak < DEAD_DB ? quiet + 1 : 0;
+  if (!r.queued) return;
+  quiet = r.quiet;
   $("dead").hidden = quiet < DEAD_BLOCKS;
   queue.push(pcm);
-  if (queue.length > MAX_BUFFER_BLOCKS) { queue.splice(0, queue.length - MAX_BUFFER_BLOCKS); $("bufwarn").hidden = false; }
+  if (queue.length > MAX_BUFFER_BLOCKS) { queue = P.trim(queue, MAX_BUFFER_BLOCKS); $("bufwarn").hidden = false; }
   flush();
 }
 
 function flush() {
   if (ws && ws.readyState === 1 && ready) {
-    while (queue.length) ws.send(queue.shift());
+    P.drain(queue, x => ws.send(x));
     if (stopping) { ws.send(JSON.stringify({ type: "stop" })); stopping = "sent"; }
   }
 }
@@ -152,7 +167,8 @@ function connect(first) {
 function onMessage(m) {
   if (m.type === "ready") {
     recId = m.recording_id; ready = true;
-    $("status").textContent = stopping ? "Finishing..." : "Recording";
+    paused = P.reconcile(paused, queue, m.paused);      // after a resume: the server's state, never re-send pause
+    runStatus(); applyView();
     flush();
   } else if (m.type === "saved") {
     stopping = "done"; showSaved(m.recording); ws.close();
@@ -176,7 +192,7 @@ function finish() { recording = false; closeAudio(); setUi(false); }
 // ---- start / stop ---------------------------------------------------------------------------------
 async function start() {
   showError(""); $("bufwarn").hidden = true; $("saved").hidden = true;
-  blocks = 0; clips = 0; quiet = 0; queue = []; recId = null; ready = false; stopping = false;
+  blocks = 0; clips = 0; quiet = 0; queue = []; recId = null; ready = false; stopping = false; paused = false;
   $("timer").textContent = "00:00"; $("clips").textContent = "0 clips"; $("clips").classList.remove("hit");
   window.RecordLive.reset();
   ctx = new AudioContext({ sampleRate: RATE });
@@ -200,7 +216,7 @@ function stop() {
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (ctx) ctx.close();    // no more blocks after this
   stream = ctx = node = null;
-  $("mic").disabled = true; $("mic").textContent = "Finishing...";
+  applyView(); runStatus();
   flush();
 }
 
@@ -214,21 +230,30 @@ function showSaved(r) {
   $("status").textContent = "Saved.";
 }
 
+$("end").onclick = () => { if (recording && !stopping) stop(); };
+$("pause").onclick = () => {
+  if (!recording || stopping || recId == null) return;
+  paused = !paused;
+  queue.push(P.ctl(paused ? "pause" : "continue"));   // ordered after the blocks already queued
+  lastBlockAt = performance.now();                    // no false gap right after Continue
+  runStatus(); applyView(); flush();
+};
 $("mic").onclick = () => {
-  if (recording) return stop();
+  if (recording) return;
   $("mic").disabled = true;
   start().catch(err => { closeAudio(); setUi(false); showError(err.message || String(err)); });
 };
 $("liveToggle").onchange = () => window.RecordLive.show($("liveToggle").checked);
 $("again").onclick = () => {
   $("saved").hidden = true; $("timer").textContent = "00:00"; $("title").value = ""; $("title").disabled = false;
-  $("clips").textContent = "0 clips"; $("clips").classList.remove("hit"); $("status").textContent = "Press Mic on and read a script below.";
+  $("clips").textContent = "0 clips"; $("clips").classList.remove("hit"); $("status").textContent = "Press Start and read a script below.";
 };
 
 // Sleep / hidden-tab gaps are logged server-side (not recoverable audio).
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && recording && performance.now() - lastBlockAt > 1500 && ws && ws.readyState === 1)
-    ws.send(JSON.stringify({ type: "gap", ms: Math.round(performance.now() - lastBlockAt) }));
+  const ms = P.gapDue({ visible: document.visibilityState === "visible", recording, paused, wsOpen: !!ws && ws.readyState === 1,
+                        now: performance.now(), lastBlockAt, limit: 1500 });
+  if (ms != null) ws.send(JSON.stringify({ type: "gap", ms }));
 });
 
 loadScripts();

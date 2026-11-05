@@ -265,3 +265,61 @@ def test_runner_job_completes_after_live_takes_the_lease_between_lm_load_and_ana
             assert [x for x in log if x[0] == "end"] == [("end", jid, "lm_load"), ("end", jid, "analyse")]
             return j
     asyncio.run(asyncio.wait_for(body(), 40))
+
+
+# ---- record-pause ------------------------------------------------------------------------------------------------
+
+def test_pause_flushes_pending_speech_in_order_and_says_paused(tmp_path, monkeypatch):
+    async def go():
+        e = live_env(tmp_path, monkeypatch)
+        live, m = await begin(e, tmp_path)
+        await wait_until(lambda: live.state == "listening")
+        w = Writer()
+        await feed(live, w, script_pcm(("t", 2.0)))               # 2 s of speech, not committed yet (no quiet tail)
+        live.pause()                                              # synchronously after the last chunk
+        await wait_until(lambda: m.of("live_commit"), what="flush commit")
+        c = m.of("live_commit")[0]
+        assert c["start_ms"] == 0 and c["end_ms"] == 2000         # every chunk queued before the marker is in it
+        assert m.of("live_state", message="paused")
+        assert live.state == "listening" and live.message == "paused"
+        live.continue_()
+        await wait_until(lambda: m.of("live_state", message="listening"), what="listening again")
+        await live.close(1.0)
+    run(go())
+
+
+def test_timestamps_stay_right_after_a_short_pause_flush(tmp_path, monkeypatch):
+    async def go():
+        e = live_env(tmp_path, monkeypatch)
+        live, m = await begin(e, tmp_path)
+        await wait_until(lambda: live.state == "listening")
+        w = Writer()
+        await feed(live, w, script_pcm(("t", 0.2)))               # less than 0.3 s of speech pending
+        live.pause()
+        await asyncio.sleep(0.2)
+        assert m.of("live_commit") == []
+        live.continue_()
+        await feed(live, w, script_pcm(("t", 1.0), ("s", 0.8)))
+        await wait_until(lambda: m.of("live_commit"), what="commit")
+        assert m.of("live_commit")[0]["start_ms"] == 200
+        await live.close(1.0)
+    run(go())
+
+
+def test_pause_and_continue_are_no_ops_when_live_is_off_or_failed(tmp_path, monkeypatch):
+    async def go():
+        e = live_env(tmp_path, monkeypatch)
+        a, _ = await begin(e, tmp_path)
+        await wait_until(lambda: a.state == "listening")
+        b, mb = await begin(e, tmp_path, "rec2")                  # refused: another live session is active
+        await wait_until(lambda: mb.of("live_state"))
+        n = len(mb.all)
+        b.pause(); b.continue_(); b.pause()
+        await asyncio.sleep(0.1)
+        assert len(mb.all) == n and b.state == "off" and len(b._q) == 0
+        a._fail("boom")
+        n = len(a._outbox)
+        a.pause(); a.continue_()
+        assert len(a._outbox) == n and a.state == "failed" and len(a._q) == 0
+        await a.close(1.0)
+    run(go())

@@ -9,7 +9,9 @@
 <style>
   input[type=text] { font-size:16px; padding:8px 10px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); width:100%; }
   input[type=text]:disabled { opacity:.6; }
-  #mic { min-width:170px; }
+  #mic { min-width:110px; }
+  .ctl { display:flex; gap:8px; flex-wrap:wrap; }
+  .ctl .btn { min-width:110px; }
   .hint a { color:var(--accent); }
   #timer { font-size:28px; font-variant-numeric:tabular-nums; font-weight:600; }
   #status { color:var(--muted); font-size:14px; }
@@ -42,13 +44,17 @@
     <input type="text" id="title" placeholder="Recording YYYY-MM-DD HH:MM" autocomplete="off">
     <div class="row" style="margin-top:14px; justify-content:space-between">
       <div id="timer" aria-live="off">00:00</div>
-      <button class="btn" id="mic">Mic on</button>
+      <div class="ctl">
+        <button class="btn" id="mic">Start</button>
+        <button class="btn ghost" id="pause" disabled>Pause</button>
+        <button class="btn" id="end" disabled>End</button>
+      </div>
     </div>
     <div class="row" style="margin-top:10px">
       <label class="chk"><input type="checkbox" id="liveToggle"> Live assist</label>
-      <span class="hint" style="margin:0">Live text and rolling notes while you record (Whisper turbo + Gemma E4B; queued jobs wait). Choose before Mic on. Just testing speech? The <a href="/live">v1 live page</a> is still there.</span>
+      <span class="hint" style="margin:0">Live text and rolling notes while you record (Whisper turbo + Gemma E4B; queued jobs wait). Choose before Start. Just testing speech? The <a href="/live">v1 live page</a> is still there.</span>
     </div>
-    <div id="status" style="margin-top:8px">Press Mic on and read a script below.</div>
+    <div id="status" style="margin-top:8px">Press Start and read a script below.</div>
     <div class="err" id="error" role="alert" hidden></div>
   </div>
 
@@ -101,6 +107,7 @@
 </main>
 <script src="/shared/nav.js"></script>
 <script src="/record/live.js"></script>
+<script src="/record/pause.js"></script>
 <script src="/record/record.js"></script>
 </body>
 </html>

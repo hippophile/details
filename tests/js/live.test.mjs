@@ -56,6 +56,12 @@ test("state text names the waiting part", () => {
   assert.match(L.stateText({ state: "listening", message: "" }), /listening/i);
 });
 
+test("paused is shown as the live state message", () => {
+  const s = L.apply(fresh(), { type: "live_state", state: "listening", message: "paused" });
+  assert.equal(s.state, "listening");
+  assert.equal(L.stateText(s), "paused");
+});
+
 class FakeEl {
   constructor(tag) { this.tag = tag; this.children = []; this.textContent = ""; this.className = ""; this.hidden = false; }
   append(...c) { this.children.push(...c); }

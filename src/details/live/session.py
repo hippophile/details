@@ -219,6 +219,7 @@ class LiveSession:
         self._pump, self._hold, self._start, self._consumer, self._ptask = None, None, None, None, None
         self._done, self._io = asyncio.Event(), []
         self._closed_started = False
+        self.paused = False                                     # the recording is paused (record-pause)
 
     # ---- state ----------------------------------------------------------------------------------------
     @property
@@ -339,6 +340,7 @@ class LiveSession:
             self._consumer = asyncio.create_task(self._consume())
             if self.llm_entry is not None:
                 self.rolling = rolling_mod.Rolling(self)
+                self.rolling.paused = self.paused
                 self.rolling.start()
         except asyncio.CancelledError:
             raise
@@ -391,14 +393,48 @@ class LiveSession:
             keep = int(self._cap_ms * sr / 1000) * 2
             self.dropped_ms += int((len(chunk) - keep) / 2 * 1000 / sr)
             frame, chunk, ms = frame + (len(chunk) - keep) // 2, chunk[-keep:], keep / 2 * 1000 / sr
+        markers = []
         while self._q and self._q_ms + ms > self._cap_ms:
             old = self._q.popleft()
+            if old[0] is None:                                      # a pause flush marker is never dropped
+                markers.append(old)
+                continue
             d = len(old[1]) / 2 * 1000 / sr
             self._q_ms -= d
             self.dropped_ms += d
+        self._q.extendleft(reversed(markers))
         self._q.append((frame, chunk))
         self._q_ms += ms
         self._wake.set()
+
+    # ---- record-pause: both are synchronous, never raise, and are no-ops when live is off or failed ---------------
+    def pause(self):
+        """A flush marker goes through `_q`, so the consumer commits the pending speech after every chunk queued
+        before it. The rolling-notes timer stops starting updates."""
+        try:
+            if not self._accepting or self.paused:
+                return
+            self.paused = True
+            self._q.append((None, b""))
+            self._wake.set()
+            if self.rolling is not None:
+                self.rolling.paused = True
+            if self.state == STATE_LISTEN:
+                self.set_state(STATE_LISTEN, "paused")
+        except Exception as e:
+            self._offer_failed(e)
+
+    def continue_(self):
+        try:
+            if not self.paused:
+                return
+            self.paused = False
+            if self.rolling is not None:
+                self.rolling.paused = False
+            if self.state == STATE_LISTEN and self.message == "paused":
+                self.set_state(STATE_LISTEN, "listening")
+        except Exception as e:
+            self._offer_failed(e)
 
     def mark_failed(self, e):
         """For the WebSocket handler's own try/except around `offer`."""
@@ -435,6 +471,10 @@ class LiveSession:
                     await self._wake.wait()
                     continue
                 frame, chunk = self._q.popleft()
+                if frame is None:                                   # pause marker: commit what was said so far
+                    for ev in self.seg.flush():
+                        await self._handle(ev)
+                    continue
                 self._q_ms -= len(chunk) / 2 * 1000 / self.sr
                 for ev in self.seg.feed(chunk, frame):
                     await self._handle(ev)
