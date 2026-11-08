@@ -160,7 +160,7 @@ The system SHALL run diarization as the step `diarize` (installed by `install(re
 #### Scenario: Worker environment is offline and token-free
 - **GIVEN** all three token variables are set in the server environment and the fake engine records its environment
 - **WHEN** the step runs
-- **THEN** the recorded environment has `HF_HUB_OFFLINE=1`, `HF_HUB_CACHE` equal to `settings.paths.hf_hub` and none of the three variables
+- **THEN** the recorded environment has `HF_HUB_OFFLINE=1`, `HF_HUB_CACHE` equal to `settings.paths.hf_hub`, `PYANNOTE_METRICS_ENABLED=0` (pyannote 4.x reports usage metrics by default) and none of the three variables
 - **AND** `spec.json` and the argv do not contain the token
 
 #### Scenario: Device reaches the engine
@@ -233,7 +233,7 @@ The system SHALL run diarization as the step `diarize` (installed by `install(re
 #### Scenario: Token only in worker stderr
 - **GIVEN** a worker that writes a token-like `hf_...` string only to its stderr and exits non-zero
 - **WHEN** the step fails
-- **THEN** the string is absent from `child.stderr.log` as served, the job log tail, `step.json` and `diarization_run.error`
+- **THEN** the string is absent from `child.stderr.log` (the step masks that file in place when the child ends), the job log tail, `step.json` and `diarization_run.error`
 
 #### Scenario: Live preview waits for diarization
 - **GIVEN** a diarize step holding the GPU lease and a `live` request
@@ -325,7 +325,7 @@ The system SHALL expose `POST` and `GET /api/recordings/{id}/diarization-runs`, 
 
 #### Scenario: Unknown or trashed recording
 - **GIVEN** an unknown id or a trashed recording
-- **WHEN** the client POSTs
+- **WHEN** the client POSTs (or lists the runs of an unknown id)
 - **THEN** the response is 404
 
 #### Scenario: Run detail with names
@@ -364,7 +364,7 @@ The system SHALL register `@steps.on_terminal("diarize")` so that a job that end
 - **AND** a token-like value in the error text is masked
 
 ### Requirement: Speaker rename
-The system SHALL let the user set or reset a speaker's name with `PATCH /api/diarization-runs/{id}/speakers/{n}` (`{name}` or `{name:null}`), where the name is trimmed and Unicode-NFC normalised, 1-60 characters, without control characters, line breaks or a colon, unique within the run after NFC and case-folding against the other speakers' display names, and MUST NOT modify transcripts, `stt_run.text` or turns.
+The system SHALL let the user set or reset a speaker's name with `PATCH /api/diarization-runs/{id}/speakers/{n}` (`{name}` or `{name:null}`), where the name is trimmed and Unicode-NFC normalised, 1-60 characters, without control characters, line breaks or a colon, unique within the run after NFC and case-folding against the other speakers' display names and default labels (`Speaker N`), and MUST NOT modify transcripts, `stt_run.text` or turns.
 
 #### Scenario: Rename and reset
 - **GIVEN** a done run with speakers 1 and 2

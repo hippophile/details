@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/analyse/insights.css">
 <link rel="stylesheet" href="/analyse/stream.css">
 <link rel="stylesheet" href="/analyse/compare.css">
+<link rel="stylesheet" href="/analyse/speakers.css">
 </head>
 <body>
 <nav id="nav" aria-label="Pages"></nav>
@@ -75,6 +76,8 @@
         <div><label for="aiModel">AI model</label><br><select id="aiModel"><option value="">Choose AI model</option></select></div>
         <div><label for="aiLang">Write in</label><br>
           <select id="aiLang"><option value="transcript">Transcript language</option><option value="en">English</option></select></div>
+        <div><label for="aiLabels">Speaker labels</label><br>
+          <select id="aiLabels"><option value="">No labels (plain transcript)</option></select></div>
       </div>
       <div class="chips" role="group" aria-label="Outputs">
         <label class="chip"><input type="checkbox" data-kind="debrief" checked> Debrief</label>
@@ -151,6 +154,26 @@
       </div>
     </div>
 
+    <div class="card" id="spkCard">
+      <h2>Who talked</h2>
+      <div class="row spk-opts">
+        <div><label for="spkMin">Fewest speakers</label><br><input id="spkMin" type="number" min="1" max="10" step="1" inputmode="numeric" placeholder="auto"></div>
+        <div><label for="spkMax">Most speakers</label><br><input id="spkMax" type="number" min="1" max="10" step="1" inputmode="numeric" placeholder="auto"></div>
+        <button class="btn" id="spkStart" type="button" disabled>Detect speakers</button>
+        <div><label for="spkRun">Run</label><br><select id="spkRun" aria-label="Speaker run"></select></div>
+      </div>
+      <div class="meta" id="spkGpuHint">Live assist on the Record page waits while speakers are being detected.</div>
+      <div class="meta" id="spkReason" role="status" aria-live="polite"></div>
+      <div class="meta" id="spkStatus" role="status" aria-live="polite"></div>
+      <div id="spkEmpty" class="meta" hidden></div>
+      <div id="spkBars" aria-label="Talk time per speaker"></div>
+      <div id="spkTimeline" aria-label="Who talked when (click a block to play from there)" hidden></div>
+      <div id="spkNames"></div>
+      <div class="meta" id="spkWarn1" hidden>Speaker labels are a guess. Check before sharing.</div>
+      <div class="meta" id="spkWarn2" hidden>Each transcript line gets one speaker, so talk-time percentages and the labelled text can differ.</div>
+      <div id="spkTurns" aria-label="Turns"></div>
+    </div>
+
     <div class="card" id="transcriptCard">
       <h2 id="transcriptTitle">Transcript</h2>
       <div id="transcript" aria-live="polite"><div class="meta">Select a run to read its transcript.</div></div>
@@ -185,6 +208,7 @@
 <script src="/analyse/stream.js"></script>
 <script src="/analyse/outputs.js"></script>
 <script src="/analyse/compare.js"></script>
+<script src="/analyse/speakers.js"></script>
 <script src="/analyse/analyse.js"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 from ..llm import markdown
 from ..llm.prompts import latest_templates, versioned_templates
 from ..llm.schemas import KINDS
-from ..services import library
+from ..services import diarization, library
 from ..services.jobs import JobError
 from ..services.stt_runs import fmt_wall
 from .jobs import JOBS
@@ -17,7 +17,7 @@ LANGS = ("transcript", "en")
 ACTIVE = ("queued", "running")
 RUN_COLS = ("a.id, a.group_id, a.stt_run_id, a.kind, a.model_id, a.output_language, a.status, a.error, a.wall_ms, "
             "a.tokens_in, a.tokens_out, a.tok_per_s, a.finish_reason, a.schema_valid, a.validation_errors, "
-            "a.retry_of, a.params, a.created_at, a.started_at, a.finished_at, "
+            "a.retry_of, a.params, a.created_at, a.started_at, a.finished_at, a.diarization_run_id, "
             "a.raw_response->>'text' AS raw_text, o.id AS output_id, o.schema_version, o.content, "
             "(SELECT t.version FROM prompt_template t WHERE t.id=a.prompt_template_id) AS prompt_version, "
             "(SELECT t.name FROM prompt_template t WHERE t.id=a.prompt_template_id) AS prompt_name, "
@@ -31,9 +31,11 @@ class StartError(Exception):
 
 
 async def start_analysis(pool, jobs, registry, settings, stt_run_id, model_id, kinds, output_language="transcript",
-                         prompt_versions=None):
+                         prompt_versions=None, diarization_run_id=None):
     """Insert one queued analysis_run per kind + enqueue lm_load -> analyse -> lm_unload. -> (group_id, job_id).
-    prompt_versions {kind: version} picks an exact prompt version per kind; the others use the latest."""
+    prompt_versions {kind: version} picks an exact prompt version per kind; the others use the latest.
+    diarization_run_id (speakers-diarization): the analysis reads `Name: text` lines; it must be a done run of the same
+    recording and the transcript must have segments (422 otherwise)."""
     entry = registry.llm.get(model_id) if isinstance(model_id, str) else None
     if entry is None:
         raise StartError(422, f"'{model_id}' is not an LLM model" if isinstance(model_id, str) and model_id in registry.stt
@@ -70,6 +72,12 @@ async def start_analysis(pool, jobs, registry, settings, stt_run_id, model_id, k
     missing = [k for k in kinds if k not in templates]
     if missing:
         raise StartError(422, f"no prompt template for {', '.join(missing)} (run `make prompts`)")
+    if diarization_run_id is not None:
+        try:
+            await diarization.label_source(pool, rid, diarization_run_id, need_segments=True)
+        except diarization.LabelError as e:
+            raise StartError(422, e.message) from None
+        diarization_run_id = library.as_uuid(diarization_run_id)
     group_id = str(uuid.uuid4())
     async with pool.connection() as c:
         async with c.transaction():
@@ -77,14 +85,16 @@ async def start_analysis(pool, jobs, registry, settings, stt_run_id, model_id, k
                 params = {"temperature": 0.1, "max_tokens": settings.llm.max_tokens(k), "model": entry.model,
                           "context": entry.context}
                 await c.execute("INSERT INTO analysis_run (group_id, stt_run_id, kind, prompt_template_id, llm_endpoint, "
-                                "model_id, params, output_language, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,clock_timestamp())",
+                                "model_id, params, output_language, diarization_run_id, created_at) "
+                                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,clock_timestamp())",
                                 (group_id, rid, k, templates[k].id, settings.lmstudio.url, model_id, Jsonb(params),
-                                 output_language))
+                                 output_language, diarization_run_id))
     try:
         job_id = await jobs.enqueue("analyse", str(run["recording_id"]), [
             {"name": "lm_load", "params": {"model_id": model_id}},
             {"name": "analyse", "params": {"group_id": group_id, "stt_run_id": str(rid), "model_id": model_id,
-                                          "kinds": kinds, "output_language": output_language}},
+                                          "kinds": kinds, "output_language": output_language,
+                                          **({"diarization_run_id": diarization_run_id} if diarization_run_id else {})}},
             "lm_unload"])
     except JobError as e:
         async with pool.connection() as c:
@@ -152,6 +162,7 @@ def _assemble(rows, registry):
         m = registry.llm.get(first["model_id"])
         out.append({"group_id": str(gid), "stt_run_id": str(first["stt_run_id"]), "model_id": first["model_id"],
                     "model_label": m.label if m else first["model_id"], "output_language": first["output_language"],
+                    "diarization_run_id": str(first["diarization_run_id"]) if first["diarization_run_id"] else None,
                     "status": _group_status([k["status"] for k in kinds]),
                     "job_id": next((r["params"].get("job_id") for r in rs if (r["params"] or {}).get("job_id")), None),
                     "prompts": {k["kind"]: k["prompt_version"] for k in kinds if k["prompt_version"] is not None},
@@ -192,7 +203,7 @@ def add_analyses_routes(app, settings, pool_key, registry):
             gid, jid = await start_analysis(pool(request), request.app[JOBS], registry, settings,
                                             request.match_info["id"], body.get("model_id"), body.get("kinds"),
                                             body.get("output_language", "transcript"),
-                                            body.get("prompt_versions"))
+                                            body.get("prompt_versions"), body.get("diarization_run_id"))
         except StartError as e:
             return err(e.message, e.status)
         return web.json_response({"group_id": gid, "job_id": jid}, status=202)

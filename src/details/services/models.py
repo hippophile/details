@@ -1,15 +1,16 @@
-"""Model registry loaded from models.toml: [stt.<id>] and [llm.<id>] blocks, validated at load time."""
-import pathlib, tomllib
+"""Model registry loaded from models.toml: [stt.<id>], [llm.<id>] and [diar.<id>] blocks, validated at load time."""
+import importlib.util, pathlib, tomllib
 from dataclasses import dataclass, field
 
 from ..settings import REPO_ROOT
 
-ENGINES = {"stt": "mlx_whisper", "llm": "lmstudio"}
+ENGINES = {"stt": "mlx_whisper", "llm": "lmstudio", "diar": "pyannote"}
 ROLES = ("cheap", "nice", "fast", "accurate")
 # required fields per kind -> type(s)
 REQUIRED = {"stt": {"engine": str, "label": str, "repo": str, "needs_gb": (int, float), "role": str},
             "llm": {"engine": str, "label": str, "model": str, "context": int, "needs_gb": (int, float),
-                    "role": str}}
+                    "role": str},
+            "diar": {"engine": str, "label": str, "repo": str, "needs_gb": (int, float), "role": str}}
 
 
 class ModelsConfigError(ValueError):
@@ -43,9 +44,21 @@ class LlmModel:
 
 
 @dataclass(frozen=True)
+class DiarModel:
+    id: str
+    engine: str
+    label: str
+    repo: str           # Hugging Face repo of the pipeline snapshot
+    needs_gb: float
+    role: str
+    kind: str = "diar"
+
+
+@dataclass(frozen=True)
 class Registry:
     stt: dict
     llm: dict
+    diar: dict = field(default_factory=dict)
 
     def get(self, model_id):
         return self.stt.get(model_id) or self.llm.get(model_id)
@@ -64,8 +77,8 @@ def load_registry(path):
         raise ModelsConfigError(f"{path}: model registry not found") from None
     except tomllib.TOMLDecodeError as e:
         raise ModelsConfigError(f"{path}: invalid TOML: {e}") from None
-    out = {"stt": {}, "llm": {}}
-    for kind in ("stt", "llm"):
+    out = {"stt": {}, "llm": {}, "diar": {}}
+    for kind in ("stt", "llm", "diar"):
         table = raw.get(kind, {})
         if not isinstance(table, dict):
             raise ModelsConfigError(f"{path}: [{kind}] must contain [{kind}.<id>] tables")
@@ -74,7 +87,7 @@ def load_registry(path):
             if not isinstance(block, dict):
                 raise ModelsConfigError(f"{path}: {name} must be a table")
             out[kind][mid] = _build(path, kind, mid, name, block)
-    return Registry(stt=out["stt"], llm=out["llm"])
+    return Registry(stt=out["stt"], llm=out["llm"], diar=out["diar"])
 
 
 def _build(path, kind, mid, name, b):
@@ -92,6 +105,9 @@ def _build(path, kind, mid, name, b):
         return SttModel(id=mid, engine=b["engine"], label=b["label"], repo=b["repo"], needs_gb=b["needs_gb"],
                         role=b["role"], langs=tuple(b.get("langs", [])), options=dict(b.get("options", {})),
                         enabled=bool(b.get("enabled", True)))
+    if kind == "diar":
+        return DiarModel(id=mid, engine=b["engine"], label=b["label"], repo=b["repo"], needs_gb=b["needs_gb"],
+                         role=b["role"])
     return LlmModel(id=mid, engine=b["engine"], label=b["label"], model=b["model"], context=b["context"],
                     needs_gb=b["needs_gb"], role=b["role"])
 
@@ -104,8 +120,53 @@ def stt_installed(hub, repo):
     return any((d / "snapshots").glob("*/weights.*"))
 
 
+WEIGHT_SUFFIXES = (".bin", ".safetensors", ".ckpt")
+
+
+def pyannote_importable():
+    """True when pyannote.audio can be imported. Never raises and never imports it: find_spec("pyannote.audio") RAISES
+    ModuleNotFoundError when the parent package `pyannote` is absent, so the parent is checked first."""
+    try:
+        return importlib.util.find_spec("pyannote") is not None and importlib.util.find_spec("pyannote.audio") is not None
+    except (ModuleNotFoundError, ValueError, ImportError):
+        return False
+
+
+def _snapshots(hub, repo):
+    d = pathlib.Path(hub) / ("models--" + repo.replace("/", "--")) / "snapshots"
+    return [p for p in d.glob("*") if p.is_dir()] if d.is_dir() else []
+
+
+def _has_config(hub, repo):
+    return any((p / "config.yaml").is_file() for p in _snapshots(hub, repo))
+
+
+def model_cached(hub, repo):
+    """A complete snapshot in the Hugging Face cache: config.yaml AND at least one weight file (*.bin, *.safetensors,
+    *.ckpt) in the same snapshot. The weight-file rule is checked against the real download (speakers-diarization 9.2)."""
+    return any((p / "config.yaml").is_file() and any(f.is_file() and f.suffix in WEIGHT_SUFFIXES for f in p.rglob("*"))
+               for p in _snapshots(hub, repo))
+
+
+def diar_status(entry, settings):
+    """-> (installed, reason, hint) for one diarization entry. No torch import, never raises."""
+    if not pyannote_importable():
+        return False, "pyannote.audio is not installed", "run `make setup-diar`"
+    hub = settings.paths.hf_hub
+    if model_cached(hub, entry.repo):
+        return True, None, None          # a cached model works offline: no token needed at run time
+    if _has_config(hub, entry.repo):
+        return False, f"the download of {entry.repo} is incomplete", "run `make diar-model` again"
+    if settings.diarization.hf_token:
+        return (False, f"the speaker model {entry.repo} is not downloaded",
+                f"accept the model terms on https://huggingface.co/{entry.repo}, then run `make diar-model`")
+    return (False, f"the speaker model {entry.repo} is not downloaded",
+            f"create a free Hugging Face token, accept the model terms on https://huggingface.co/{entry.repo}, "
+            "put HF_TOKEN=... in .env, then run `make diar-model`")
+
+
 async def describe(registry, settings, ctl):
-    """-> {stt:[...], llm:[...], lmstudio:{reachable}}; never raises because LM Studio is down."""
+    """-> {stt:[...], llm:[...], diar:[...], lmstudio:{reachable}}; never raises because LM Studio is down."""
     reachable = await ctl.reachable()
     downloaded = None
     if reachable:
@@ -136,7 +197,16 @@ async def describe(registry, settings, ctl):
             item.update(installed=False, unavailable_reason="model is not downloaded in LM Studio",
                         hint=f"download '{e.model}' in LM Studio")
         llm.append(item)
-    return {"stt": stt, "llm": llm, "lmstudio": {"reachable": reachable}}
+    diar = []
+    for e in registry.diar.values():
+        item = _item(e)
+        ok, reason, hint = diar_status(e, settings)
+        if ok:
+            item["installed"] = True
+        else:
+            item.update(installed=False, unavailable_reason=reason, hint=hint)
+        diar.append(item)
+    return {"stt": stt, "llm": llm, "diar": diar, "lmstudio": {"reachable": reachable}}
 
 
 def _item(e):

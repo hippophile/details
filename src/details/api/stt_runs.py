@@ -1,7 +1,8 @@
-"""STT run API: POST/GET /api/recordings/{id}/stt-runs, GET /api/stt-runs/{id}[/segments], DELETE /api/stt-runs/{id}."""
+"""STT run API: POST/GET /api/recordings/{id}/stt-runs, GET /api/stt-runs/{id}[/segments], DELETE /api/stt-runs/{id}.
+segments takes an optional ?diarization_run_id= (speakers-diarization)."""
 from aiohttp import web
 
-from ..services import stt_runs
+from ..services import diarization, stt_runs
 from .jobs import JOBS
 
 
@@ -42,7 +43,15 @@ def add_stt_runs_routes(app, settings, pool_key, registry):
 
     async def segments(request):
         segs = await stt_runs.segments(pool(request), request.match_info["id"])
-        return web.json_response(segs) if segs is not None else err("run not found", 404)
+        if segs is None:
+            return err("run not found", 404)
+        dr = request.query.get("diarization_run_id")
+        if dr is not None:        # speakers-diarization: speaker + speaker_name per row, computed by overlap
+            try:
+                segs = await diarization.labelled_segments(pool(request), request.match_info["id"], dr)
+            except diarization.LabelError as e:
+                return err(e.message, 422)
+        return web.json_response(segs)
 
     async def delete(request):
         r = await stt_runs.delete_run(pool(request), request.match_info["id"])

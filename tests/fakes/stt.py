@@ -5,7 +5,8 @@ DETAILS_STT_PLUGINS=fakes.stt. Knobs (env, inherited by the child):
   FAKE_STT_DELAY=<seconds>   sleep per window
   FAKE_STT_DIE_AT=<start_s>  os._exit(137) when asked to transcribe a window starting at or after this second
   FAKE_STT_PIDFILE=<file>    write the child pid at construction
-  FAKE_STT_NAN=1             avg_logprob is NaN (mlx-whisper does this on a lone "!" in silence)"""
+  FAKE_STT_NAN=1             avg_logprob is NaN (mlx-whisper does this on a lone "!" in silence)
+  FAKE_STT_ENVFILE=<file>    at construction: dump which of the 3 Hugging Face token variables are present (never values)"""
 import json, os, time
 
 from details.engines import ENGINES
@@ -20,6 +21,9 @@ class FakeSttEngine:
         self.model, self.language = model, None
         if os.environ.get("FAKE_STT_PIDFILE"):
             open(os.environ["FAKE_STT_PIDFILE"], "w").write(str(os.getpid()))
+        if os.environ.get("FAKE_STT_ENVFILE"):
+            names = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "DETAILS_DIARIZATION_HF_TOKEN")
+            open(os.environ["FAKE_STT_ENVFILE"], "w").write(json.dumps({n: n in os.environ for n in names}))
 
     def load(self):
         pass

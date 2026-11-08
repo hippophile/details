@@ -75,3 +75,12 @@ llm_timeout_s = 90                # one notes call (and one model load)
 stt_timeout_s = 30                # one speech reply (after the worker said ready)
 stt_load_timeout_s = 120          # cold start of the speech worker
 vocab_hint = false                # send [stt] vocab_hint to Whisper
+
+[diarization]                     # Who talked (DETAILS_DIARIZATION_<KEY>); the Hugging Face token is HF_TOKEN in .env, never here
+model = "community-1"             # models.toml [diar.<id>]
+device = "cpu"                    # cpu | mps (mps is opt-in: the PyTorch MPS backend does not implement every operator)
+merge_gap_ms = 1500               # same-speaker turns closer than this are counted as one turn and one transcript line
+stall_s = 600                     # the worker stops its keepalive after this long without progress (then the runner kills it)
+keepalive_s = 15                  # "alive" line interval from process start (covers a slow model load)
+progress_min_interval_s = 1.0     # at most one progress line per this long (0 = every callback)
+plugins = ""                      # extra engine modules for the worker (comma-separated; tests)

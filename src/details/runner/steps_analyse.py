@@ -10,13 +10,14 @@ from ..llm import client, pipeline
 from ..llm.client import LLMError, StreamCancelled
 from ..llm.lmstudio_ctl import identifier_for
 from ..llm.prompts import language_name
+from ..services import diarization
 from .joblog import JobLogs
 from .steps import StepError, steps
 
 log = logging.getLogger("details.analyse")
 _POOL = _MEMORY = _SETTINGS = _HUB = _LEASE = None
 RUN_COLS = ("group_id, stt_run_id, kind, prompt_template_id, llm_endpoint, model_id, params, output_language, "
-            "input_text_sha256")
+            "input_text_sha256, diarization_run_id")
 
 
 def bind(pool, *, memory=None, settings=None, hub=None, lease=None):
@@ -88,6 +89,14 @@ async def _analyse(ctx):
         segs = [r["text"].strip() for r in await (await c.execute(
             "SELECT text FROM transcript_segment WHERE stt_run_id=%s ORDER BY idx", (rows[0]["stt_run_id"],))).fetchall()]
     segs = [s for s in segs if s] or ([run["text"].strip()] if run and run["text"] and run["text"].strip() else [])
+    preface = ""
+    if p.get("diarization_run_id"):         # speakers-diarization: `Name: text` lines with the names current now
+        try:
+            segs = await diarization.labelled_lines(pool, rows[0]["stt_run_id"], p["diarization_run_id"],
+                                                    ctx.settings.diarization.merge_gap_ms)
+        except diarization.LabelError as e:
+            raise StepError(e.message) from None      # never falls back to an unlabelled run
+        preface = diarization.LEGEND
     if not segs:
         raise StepError("the transcript is empty")
     full = "\n".join(segs)
@@ -174,7 +183,7 @@ async def _analyse(ctx):
             result = await pipeline.generate_kind(chat, settings=ctx.settings, kind=kind, template=template,
                                                   model=model_name, context=entry.context, segments=segs,
                                                   language=language, title=run["title"], data_dir=ctx.data_dir,
-                                                  on_progress=on_progress, on_event=on_event)
+                                                  on_progress=on_progress, on_event=on_event, preface=preface)
         except StreamCancelled:
             return None                     # cancelled mid-stream: nothing stored, the finalizer ends every row 'cancelled'
         except LLMError as e:

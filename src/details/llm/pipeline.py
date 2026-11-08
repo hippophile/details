@@ -125,9 +125,12 @@ def _sum(attempts, **extra):
 
 
 async def generate_kind(chat, *, settings, kind, template, model, context, segments, language, title, data_dir,
-                        on_progress=None, on_event=None):
+                        on_progress=None, on_event=None, preface=""):
     """on_event (optional, live view): ("chunk", i, n) before each map call (1-based), ("chunk", None, None) before
-    the reduce call, plus call_validated's ("attempt_end", ...)."""
+    the reduce call, plus call_validated's ("attempt_end", ...).
+    preface (speakers-diarization): a fixed sentence placed at the start of the transcript text of EVERY prompt (single
+    pass and each chunk), so a legend is never lost in later chunks. Quote checks still run against the plain text;
+    the chunk cache key sees the prefaced text, so a plain and a labelled run never share an entry."""
     llm = settings.llm
     full = "\n".join(segments)
     max_tokens = llm.max_tokens(kind)
@@ -140,8 +143,11 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
         return lambda d: schemas.validate(kind, d) or checks.run(names, kind, d, text)
     progress = on_progress or (lambda f, m="": None)
 
+    def framed(text):
+        return f"{preface}\n\n{text}" if preface else text
+
     def prompt(text):
-        return [{"role": "user", "content": render(template.body, text, language, title)}]
+        return [{"role": "user", "content": render(template.body, framed(text), language, title)}]
 
     if estimate_tokens(full, llm.chars_per_token) <= min(llm.single_pass_max_tokens, room):
         attempts = await call_validated(chat, kind, prompt(full), schema, validator(full), max_tokens, on_event)
@@ -164,7 +170,7 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
 
     for i, chunk in enumerate(chunks):
         text = "\n".join(chunk)
-        key = cache_key(kind, template.sha256, model, params, text)
+        key = cache_key(kind, template.sha256, model, params, framed(text))
         hit = cache_get(data_dir, key) if data_dir else None
         if hit:
             contents.append(hit["content"])

@@ -33,16 +33,23 @@ Only the one-off download needs the token. Making the cached model depend on the
 ## Device (decision 8)
 Default `cpu`. The model card (as read in `ml-engineer.md`) documents CPU and does not mention MPS; PyTorch's MPS backend does not implement every operator. MPS is opt-in and the worker then enables PyTorch's CPU fallback for missing operators. `torch.backends.mps.is_available()` is true in this venv (torch 2.15.0, measured 2026-11-08), so the opt-in is testable. A flip of the default needs the task 12 comparison.
 
-## Unverified assumptions (each is a task, nothing is built on them silently)
-| Assumption | Where it matters | Checked in |
+## Assumptions: verified 2026-11-08 against the installed pyannote.audio 4.0.7 (task 9.1), and what is still open
+Install (task 9.1): `uv pip install --dry-run -r requirements-diar.txt` added 57 packages and changed none of torch 2.15.0, mlx 0.32.4, mlx-whisper 0.4.3, numpy 2.5.4, psycopg 3.3.7, aiohttp 3.14.5, so it was installed into `.venv` (`pyannote-audio==4.0.7`, `torchaudio==2.11.1`, `torchcodec==0.17.0`, `lightning==2.6.6`). `import pyannote.audio` and `from pyannote.audio import Pipeline` work with torch 2.15.0 (MPS available). No separate venv is needed. Verified by reading the installed source (`core/pipeline.py`, `pipelines/speaker_diarization.py`, `core/io.py`, `utils/hf_hub.py`, `telemetry/metrics.py`) and by `scratchpad/verify_pyannote.py`:
+| Assumption | Result | Evidence |
 |---|---|---|
-| `pyannote.audio` 4.x installs next to `mlx-whisper` in `.venv` | setup | 9.1 |
-| community-1 snapshot has a `config.yaml` at its root, weight files (`*.bin`, `*.safetensors` or `*.ckpt`) and bundles its sub-models, so a local snapshot path loads offline | `model_cached`, worker load | 9.2 |
-| `Pipeline.__call__(..., hook=)` calls `hook(step_name, step_artifact, file=None, total=None, completed=None)` | progress lines | 9.2 |
-| `min_speakers` / `max_speakers` keyword arguments and `output.exclusive_speaker_diarization` exist in the installed version | worker | 9.2 |
-| A preloaded `{"waveform": Tensor(1, T), "sample_rate": 16000}` is accepted (no torchcodec needed) | audio decode | 9.2 |
-| Speed on M1 Pro CPU is "minutes for 2.5 h" | user expectation only | 12.2 |
-If 9.2 shows a different API, only `engines/pyannote_diar.py` changes; the worker, step, API and tests use the engine interface `load(device)`, `diarize(audio_path, min_speakers, max_speakers, progress)`.
+| `pyannote.audio` 4.x installs next to `mlx-whisper` in `.venv` | **Yes** | dry run + install, no existing package changed; both import |
+| `Pipeline.__call__(..., hook=)` calls `hook(step_name, step_artifact, file=None, total=None, completed=None)` | **Yes, with a caveat** | `apply` docstring and `setup_hook` (`partial(hook, file=file)`). Time-consuming steps (`segmentation`, `embeddings`) pass `completed`/`total`; the other calls (`speaker_counting`, `discrete_diarization`, a final `embeddings` and `segmentation`) pass only the artifact, no `total`. The adapter turns a call without `total` into `1/1` (`hook_args`) |
+| `min_speakers` / `max_speakers` keyword arguments exist | **Yes** | `SpeakerDiarization.apply(file, num_speakers, min_speakers, max_speakers, hook)`; min has no effect when `num_speakers` is given (we never pass it) |
+| `output.exclusive_speaker_diarization` exists | **Yes** | `DiarizeOutput` fields: `speaker_diarization`, `exclusive_speaker_diarization`, `speaker_embeddings`. A pipeline with `legacy=True` returns the `Annotation` itself, so the adapter uses `getattr(out, "exclusive_speaker_diarization", out)` |
+| A preloaded `{"waveform": Tensor(1, T), "sample_rate": 16000}` is accepted (no torchcodec needed) | **Yes** | `core/io.py`: a mapping with `waveform` of shape (channel, time) and `sample_rate` is used as is (`uri` defaults to "waveform"); a 2 s test clip decoded by our ffmpeg pipe passes `Audio()` as (1, 32000) |
+| A local snapshot directory loads via `Pipeline.from_pretrained(dir)` and reads `config.yaml` at its root | **Yes for the loader** | `from_pretrained`: "path to a local directory containing such a file"; the file name is `config.yaml` (`AssetFileName.Pipeline`). Sub-models `$model/<folder>` become `{"checkpoint": <dir>, "subfolder": <folder>}` and are read from `<dir>/<folder>/pytorch_model.bin` (`AssetFileName.Model`), so the snapshot MUST bundle them; whether community-1 does is **open until `make diar-model` has run** (9.2, needs the user's token) |
+| Weight files are `*.bin` / `*.safetensors` / `*.ckpt` | **Partly** | the loader reads `pytorch_model.bin` (and optionally `calibration.safetensors`); the rule in `model_cached` accepts any of the three suffixes anywhere in the snapshot. **Open** for the real community-1 layout (e.g. PLDA `.npz` files) until 9.2 |
+| Offline cache lookup | **Yes** | `huggingface_hub.snapshot_download(repo, local_files_only=True)` (2.4.0 has the parameter) returns the snapshot folder; with `HF_HUB_OFFLINE=1` and an empty cache it raises `LocalEntryNotFoundError`, which the adapter turns into "the speaker model ... is not in the Hugging Face cache: run `make diar-model`" (seen end to end through the worker) |
+| Speed on M1 Pro CPU is "minutes for 2.5 h" | **Open** | user expectation only; measured in 12.2 |
+
+**Finding that changes behaviour (not in the original design): pyannote.audio 4.x sends usage telemetry by default.** `pyannote/audio/telemetry/config.yaml` has `metrics_enabled: true` and `otlp_endpoint: https://otel.pyannote.ai/v1/traces`; `track_pipeline_init` / `track_pipeline_apply` send spans with the audio **duration**, the requested min/max speakers, the library version and a session id (no audio, no text). `HF_HUB_OFFLINE=1` does not stop this. It contradicts "nothing leaves the machine", so the worker sets `PYANNOTE_METRICS_ENABLED=0` before anything imports pyannote (the module only defaults the variable when it is unset). A test records the variable in the fake worker. Network traffic itself was not captured in this session (no model to run), so "no connection is made" is read from the source, not measured.
+
+If the real API differs from the table, only `engines/pyannote_diar.py` changes; the worker, step, API and tests use the engine interface `load(device)`, `diarize(audio_path, min_speakers, max_speakers, progress)`.
 
 ## Quote check with labels (decision 16)
 Labelled lines are passed as the existing `segments`; `generate_kind` verifies quotes against the same text. A quote inside one line verifies as before. A quote that crosses a line break now also contains the next line's label and shows "unverified" (kept, never dropped). The inserted instruction sentence tells the model not to put names in quotes. Verifying against a label-free copy would need a new parameter in `generate_kind`; not worth the blast radius for a cosmetic case.
@@ -53,7 +60,7 @@ Labelled lines are passed as the existing `segments`; `generate_kind` verifies q
 ## Rejected
 - WhisperX (second Whisper stack), FluidAudio and sherpa-onnx (fallbacks in `ml-engineer.md`; none needed unless 9.1 fails; a later change can add an engine id).
 - A `speakers` row in `output`: the table requires an `analysis_run`, which would be a fake LLM run.
-- Separate venv for pyannote: only if 9.1 shows a resolver conflict.
+- Separate venv for pyannote: not needed (9.1 showed no conflict).
 
 ## DDL (migration `0009_diarization.sql`, as it will be written)
 Style follows `0004_stt_runs.sql`.
@@ -108,6 +115,8 @@ Notes: `speaker_name` is the only mutable table (UPDATE/upsert/DELETE by PATCH).
                                 settings.diarization.hf_token (kept)
 diar worker argv: /usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u DETAILS_DIARIZATION_HF_TOKEN
                   HF_HUB_OFFLINE=1 HF_HUB_CACHE=<settings.paths.hf_hub> python -m details.engines.diar_worker spec.json
+worker itself:    also sets HF_HUB_OFFLINE=1, HF_HUB_CACHE, PYANNOTE_METRICS_ENABLED=0 (pyannote 4.x telemetry), and
+                  PYTORCH_ENABLE_MPS_FALLBACK=1 only for device=mps, before it imports the engine
 ```
 `spawn_child(argv)` has no `env` parameter, hence the `env` wrapper. Scrubbing happens in `__main__` (not inside `load_settings`) so tests that pass an explicit environment mapping, and `diar_fetch`, still see the token. A shell-exported token is also removed from the server process; that is intended.
 

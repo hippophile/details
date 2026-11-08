@@ -3,11 +3,12 @@ from aiohttp import web
 
 from .app import BIND_HOST, create_app
 from .db import DatabaseError, connect
-from .settings import load_settings
+from .settings import load_settings, scrub_secret_env
 
 
 def main():
     s = load_settings()
+    scrub_secret_env()      # the Hugging Face token stays in settings; no child process inherits it
     s.paths.data_dir.mkdir(parents=True, exist_ok=True)
     reachable = "no (DATABASE_URL not set)"
     if s.db.url:

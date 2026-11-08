@@ -1,7 +1,7 @@
 """Layered settings: config.toml < DETAILS_<SECTION>_<KEY> env (with .env filling what the env lacks).
 The only module that reads the environment. DSNs and .env values never appear in errors or logs."""
 import dataclasses, os, pathlib, tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config.toml"
@@ -119,6 +119,20 @@ class Live:
 
 
 @dataclass(frozen=True)
+class Diarization:
+    """Who talked (speakers-diarization). Every key has a default so a config.toml without [diarization] still loads.
+    hf_token comes from DETAILS_DIARIZATION_HF_TOKEN / HF_TOKEN (env or .env) only; it is never in config.toml or a repr."""
+    model: str = "community-1"            # models.toml [diar.<id>]
+    device: str = "cpu"                   # cpu | mps (opt-in; the PyTorch MPS backend lacks some operators)
+    merge_gap_ms: int = 1500              # same-speaker turns closer than this count as one turn / one transcript line
+    stall_s: float = 600.0                # the worker stops its keepalive after this long without progress
+    keepalive_s: float = 15.0             # "alive" line interval from process start (covers a slow model load)
+    progress_min_interval_s: float = 1.0  # at most one progress line per this long (0 = every callback)
+    plugins: str = ""                     # extra engine modules for the worker (comma-separated; tests)
+    hf_token: str = field(default="", repr=False)
+
+
+@dataclass(frozen=True)
 class Settings:
     server: Server
     paths: Paths
@@ -131,6 +145,7 @@ class Settings:
     stt: Stt
     llm: Llm
     live: Live
+    diarization: Diarization
     import_: Import   # config section [import]; trailing underscore because `import` is a keyword
 
 
@@ -210,6 +225,20 @@ def _v_live(s):
         raise ValueError("live.test_interval_s: only allowed with live.test_mode = true (tests)")
 
 
+def _v_diarization(s):
+    if not s.model:
+        raise ValueError("diarization.model: must not be empty")
+    if s.device not in DEVICES:
+        raise ValueError(f"diarization.device: must be one of {', '.join(DEVICES)}")
+    if s.merge_gap_ms < 0:
+        raise ValueError("diarization.merge_gap_ms: must be >= 0")
+    for k in ("stall_s", "keepalive_s"):
+        if getattr(s, k) <= 0:
+            raise ValueError(f"diarization.{k}: must be > 0")
+    if s.progress_min_interval_s < 0:
+        raise ValueError("diarization.progress_min_interval_s: must be >= 0")
+
+
 def _v_import(s):
     if s.max_mb <= 0:
         raise ValueError("import.max_mb: must be > 0")
@@ -242,7 +271,13 @@ SECTIONS = {"server": (Server, _v_server), "paths": (Paths, _v_paths),
             "lmstudio": (LmStudio, _v_lmstudio), "db": (Db, _v_db),
             "record": (Record, _v_record), "trash": (Trash, _v_trash), "import": (Import, _v_import),
             "models": (Models, _v_models), "runner": (Runner, _v_runner),
-            "stt": (Stt, _v_stt), "llm": (Llm, _v_llm), "live": (Live, _v_live)}
+            "stt": (Stt, _v_stt), "llm": (Llm, _v_llm), "live": (Live, _v_live),
+            "diarization": (Diarization, _v_diarization)}
+DEVICES = ("cpu", "mps")
+# keys that may only come from the environment / .env, never from config.toml: (section, key) -> variable to use
+ENV_ONLY = {("diarization", "hf_token"): "HF_TOKEN"}
+# the Hugging Face token variable names no child process of the server may inherit (see scrub_secret_env)
+SECRET_ENV = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "DETAILS_DIARIZATION_HF_TOKEN")
 # extra env names per key, tried after DETAILS_<SECTION>_<KEY>: (var, transform)
 ALIASES = {
     ("server", "port"): [("DETAILS_PORT", None), ("PORT", None)],
@@ -250,6 +285,7 @@ ALIASES = {
     ("db", "url"): [("DATABASE_URL", None)],
     ("db", "url_test"): [("DATABASE_URL_TEST", None)],
     ("record", "tz"): [("DETAILS_TZ", None)],
+    ("diarization", "hf_token"): [("HF_TOKEN", None)],
 }
 
 
@@ -309,6 +345,11 @@ def load_settings(config_path=CONFIG_PATH, env=None, dotenv_path=DOTENV_PATH):
     except tomllib.TOMLDecodeError as e:
         raise SettingsError(f"{config_path}: invalid TOML: {e}") from None
     built = {}
+    for (section, key), var in ENV_ONLY.items():      # a secret in the file is refused; the message never shows the value
+        if key in (raw.get(section) or {}):
+            alt = f"DETAILS_{section}_{key}".upper()
+            raise SettingsError(f"{config_path}: {section}.{key} must not be set in the file: put {var} (or {alt}) "
+                                "in the environment or .env instead")
     for name, (cls, validate) in SECTIONS.items():
         vals = {}
         for f in dataclasses.fields(cls):
@@ -330,3 +371,12 @@ def load_settings(config_path=CONFIG_PATH, env=None, dotenv_path=DOTENV_PATH):
             raise SettingsError(str(e)) from None
         built["import_" if name == "import" else name] = section
     return Settings(**built)
+
+
+def scrub_secret_env(env=None):
+    """Remove the Hugging Face token variables from the server's own environment so that no child process it starts
+    (STT worker, live worker, lms, diarization worker) inherits them. Call it right after load_settings(): the value
+    stays in settings.diarization.hf_token (used by `diar_fetch` only)."""
+    env = os.environ if env is None else env
+    for name in SECRET_ENV:
+        env.pop(name, None)

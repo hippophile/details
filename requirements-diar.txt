@@ -1,0 +1,7 @@
+# Optional: "Who talked" (speakers-diarization). Installed by `make setup-diar`, not by `make setup`.
+# Heavy: adds 57 packages (lightning, scikit-learn, matplotlib, pandas, torchaudio, torchcodec, opentelemetry, ...) next to
+# the torch 2.15.0 that mlx-whisper already pulls in. Checked 2026-11-08: the dry run changed none of torch, mlx,
+# mlx-whisper, numpy, psycopg, aiohttp, and `import pyannote.audio` works with torch 2.15.0 + torchaudio 2.11.1.
+# The worker turns pyannote's usage metrics off (PYANNOTE_METRICS_ENABLED=0): by default 4.x reports to otel.pyannote.ai.
+pyannote.audio==4.0.7
+torchaudio==2.11.1

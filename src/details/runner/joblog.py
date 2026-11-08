@@ -15,11 +15,14 @@ LEVELS = ("debug", "info", "warn", "error")
 _USERINFO = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@")
 _KEYED = re.compile(r"""(?i)((?:["']?)(?:password|passwd|pwd|token|api[_-]?key)(?:["']?)\s*[=:]\s*["']?)[^\s&;,"'}]+""")
 _BEARER = re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._~+/=-]+")
+_HF_TOKEN = re.compile(r"hf_[A-Za-z0-9]{20,}")        # Hugging Face tokens, masked even when settings do not know them
 
 
 def secrets_from(settings):
-    """Secret values known to the settings: the database URLs (and their passwords), LM Studio URL userinfo."""
+    """Secret values known to the settings: the database URLs (and their passwords), LM Studio URL userinfo, the
+    Hugging Face token."""
     out = []
+    token = getattr(getattr(settings, "diarization", None), "hf_token", "")
     for url in (settings.db.url, settings.db.url_test, settings.lmstudio.url):
         if not url:
             continue
@@ -31,6 +34,8 @@ def secrets_from(settings):
                 out.append(parts.password)
         except ValueError:
             out.append(url)
+    if token:
+        out.append(token)
     return tuple(dict.fromkeys(v for v in out if len(v) >= MIN_SECRET))
 
 
@@ -50,6 +55,7 @@ def redact(text, secrets=()):
         return text
     text = redact_exact(text, secrets)
     text = _KEYED.sub(r"\1***", text)
+    text = _HF_TOKEN.sub("***", text)
     return _BEARER.sub(r"\1***", text)
 
 

@@ -143,7 +143,8 @@
     try {
       const r = await api(`/api/stt-runs/${source}/analyses`, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model_id: model, kinds: kindsOn(), output_language: $("aiLang").value,
-          prompt_versions: promptVersionsBody(versions, picks(), kindsOn()) }) });
+          prompt_versions: promptVersionsBody(versions, picks(), kindsOn()),
+          diarization_run_id: window.Speakers ? window.Speakers.labelRunId() : undefined }) });
       msg("");
       watch(r.job_id, r.group_id);
     } catch (e) { msg("Could not start: " + e.message, true); syncStart(); }

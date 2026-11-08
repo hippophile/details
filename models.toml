@@ -1,4 +1,4 @@
-# Model registry: adding a model = one block. engine: stt -> "mlx_whisper", llm -> "lmstudio".
+# Model registry: adding a model = one block. engine: stt -> "mlx_whisper", llm -> "lmstudio", diar -> "pyannote".
 # role: cheap | nice | fast | accurate.  needs_gb values are estimates, not measured.
 # LM Studio keys are the `modelKey` column of `lms ls --json` (checked 2026-11-03).
 
@@ -35,3 +35,10 @@ model = "gemma-4-26b-a4b-it-qat-mlx"
 context = 32768
 needs_gb = 17                     # 15.6 GB on disk + KV cache
 role = "nice"
+
+[diar.community-1]
+engine = "pyannote"
+label = "pyannote community-1"
+repo = "pyannote/speaker-diarization-community-1"
+needs_gb = 3                      # estimate, not measured
+role = "accurate"

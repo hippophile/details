@@ -3,13 +3,19 @@ PYS := .venv/bin/python
 AUDIO ?= sessions/my_take.wav
 MODELS ?=
 
-.PHONY: setup run record score test test-js migrate prompts
+.PHONY: setup setup-diar diar-model run record score test test-js migrate prompts
 
 setup:            ## one-time: ffmpeg + Python 3.12 venv + packages + Whisper models (~4.6 GB)
 	@command -v ffmpeg >/dev/null || brew install ffmpeg
 	uv venv -q --python 3.12 .venv
 	VIRTUAL_ENV=.venv uv pip install -q -r requirements.txt
 	$(PY) -c "from huggingface_hub import snapshot_download as d; [print(d(r)) for r in ('mlx-community/whisper-large-v3-turbo','mlx-community/whisper-large-v3-mlx')]"
+
+setup-diar:       ## optional: pyannote.audio for "Who talked" (heavy install; not part of `make setup`)
+	VIRTUAL_ENV=.venv uv pip install -q -r requirements-diar.txt
+
+diar-model:       ## download the speaker model (needs HF_TOKEN in .env and the model terms accepted on its page)
+	PYTHONPATH=src $(PYS) -m details.diar_fetch
 
 run:              ## server on http://localhost:$${PORT:-8765}  (v1 live page at /live)
 	PYTHONPATH=src $(PYS) -m details

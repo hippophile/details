@@ -33,6 +33,15 @@ make test      # scorer tests
 ```
 To score a take against the long script: `make record`, then `make score`. Takes saved from the page live in `sessions/`: `make score AUDIO=sessions/<file>.wav`.
 
+### Who talked (optional, one-time Hugging Face step)
+The Analyse page has a "Who talked" card (pyannote community-1, run offline after the transcript). The model is gated, so once:
+1. Create a free Hugging Face account and a **read** token at huggingface.co/settings/tokens.
+2. Accept the terms on the model page: https://huggingface.co/pyannote/speaker-diarization-community-1
+3. Put `HF_TOKEN=...` in `.env` (git-ignored). Never paste or screenshot the token.
+4. `make setup-diar` (installs pyannote.audio; heavy) and `make diar-model` (downloads the model; size not measured yet).
+
+After that the token is not needed any more: the model runs offline from the cache. Until then the card shows what is missing. Speaker labels are a guess (about 17-20% diarization error on meeting corpora, from the model card; not measured on your audio).
+
 ## Measured so far (MacBook Pro M1 Pro, 32 GB)
 
 One real take of the 1.5-min "AI plan" script, read by one person in three voices:

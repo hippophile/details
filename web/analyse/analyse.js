@@ -68,16 +68,19 @@
     syncStart();
   }
   async function finished(j) {
+    const onFinish = watching && watching.onFinish;
     stopWatching();
     await loadRuns();
     say(j.status === "done" ? "Run finished." : `Run ${j.status}${j.error ? ": " + j.error : ""}`, j.status !== "done");
     const r = runs.find((x) => x.job_id === j.id);
     if (r && j.status === "done") select(r);
+    if (onFinish) onFinish(j);
   }
-  function watch(jobId) {
+  // onFinish (optional): called with the finished job; the speaker card (speakers.js) watches its diarize job this way
+  function watch(jobId, onFinish) {
     if (watching && watching.id === jobId) return;
     stopWatching();
-    watching = { id: jobId, es: null, poll: null };
+    watching = { id: jobId, es: null, poll: null, onFinish };
     $("progress").hidden = false;
     if (window.Insights) window.Insights.attach($("progress"), jobId);
     startBtn.disabled = true;
@@ -143,8 +146,11 @@
     $("transcript").replaceChildren(el("div", { className: "meta" }, "Select a run to read its transcript."));
     $("transcriptTitle").textContent = "Transcript";
   }
+  let selToken = 0;       // a newer select() (e.g. the speaker card picking a run) makes an older one stop before it draws
   async function select(r) {
+    const token = ++selToken;
     selected = r;
+    if (window.Speakers) window.Speakers.transcriptChanged(r);     // the turns list of the speaker card reads this transcript
     if (window.Outputs) window.Outputs.pick(r);
     for (const li of $("runs").children) li.classList.remove("sel");
     await loadRuns_mark(r);
@@ -152,10 +158,15 @@
     box.replaceChildren();
     $("transcriptTitle").textContent = "Transcript: " + r.label;
     if (r.status !== "done") { box.appendChild(el("div", { className: "meta" }, r.error || `This run is ${r.status}.`)); return; }
-    const segs = await api(`/api/stt-runs/${r.id}/segments`);
+    const dr = window.Speakers && window.Speakers.pickedId();         // speaker run picked: rows get a speaker chip
+    let segs;
+    try { segs = await api(`/api/stt-runs/${r.id}/segments` + (dr ? `?diarization_run_id=${encodeURIComponent(dr)}` : "")); }
+    catch (e) { if (!dr) throw e; segs = await api(`/api/stt-runs/${r.id}/segments`); }
+    if (token !== selToken) return;
     segEls = [];
     if (!segs.length) {
       const full = await api(`/api/stt-runs/${r.id}`);
+      if (token !== selToken) return;
       box.appendChild(el("div", { className: "meta" }, "No timestamps for this run (imported from v1)."));
       box.appendChild(el("div", { className: "plain" }, full.text || ""));
       return;
@@ -164,6 +175,7 @@
       const row = el("div", { className: "seg", tabIndex: 0 });
       row.setAttribute("role", "button");
       row.appendChild(el("span", { className: "t" }, `[${fmtClock(s.start_ms)}]`));
+      if (s.speaker_name !== undefined && window.Speakers) row.appendChild(window.Speakers.chip(s));
       row.appendChild(el("span", { className: "x" }, s.text));
       row.dataset.start = s.start_ms; row.dataset.end = s.end_ms;
       row.onclick = () => seekTo(player, s.start_ms);
@@ -177,6 +189,7 @@
     if (i >= 0 && $("runs").children[i]) $("runs").children[i].classList.add("sel");
   }
   document.addEventListener("analyses-changed", () => { loadRuns().catch(() => {}); });
+  window.AnalyseJobs = { watch, refreshTranscript: () => { if (selected) select(selected); } };
   player.addEventListener("timeupdate", () => {
     const ms = player.currentTime * 1000;
     for (const row of segEls) row.classList.toggle("on", ms >= +row.dataset.start && ms < +row.dataset.end);

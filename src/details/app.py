@@ -7,6 +7,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from .api.analyses import add_analyses_routes
 from .api.comparisons import add_comparisons_routes
+from .api.diarization import add_diarization_routes
 from .api.insights import add_insights_routes
 from .api.jobs import JOBS, STREAM_HUB, add_jobs_routes
 from .api.live_v1 import add_live_routes
@@ -39,7 +40,8 @@ PURGE_TASK = web.AppKey("purge_task", asyncio.Task)
 RUNNER = web.AppKey("runner", JobRunner)
 LEASE = web.AppKey("lease", GpuLease)          # the ONE GpuLease: the runner and the live assistant share it
 JOBLOGS = web.AppKey("joblogs", JobLogs)
-STEP_MODULES = ("details.runner.steps_stt", "details.runner.steps_analyse")   # owned by stt-runs / llm-outputs
+STEP_MODULES = ("details.runner.steps_stt", "details.runner.steps_analyse",
+                "details.runner.steps_diar")   # owned by stt-runs / llm-outputs / speakers-diarization
 
 
 def check_live_models(settings, registry):
@@ -52,6 +54,12 @@ def check_live_models(settings, registry):
     if live.stt_model not in registry.stt:
         raise SettingsError(f"live.stt_model: '{live.stt_model}' is not a speech model in models.toml"
                             + (" (it is an LLM)" if live.stt_model in registry.llm else ""))
+
+
+def check_diarization_model(settings, registry):
+    """Startup: [diarization] model must be a [diar.<id>] block of models.toml."""
+    if settings.diarization.model not in registry.diar:
+        raise SettingsError(f"diarization.model: '{settings.diarization.model}' is not a [diar.<id>] entry in models.toml")
 
 
 def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(), step_registry=None,
@@ -89,6 +97,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_recordings_routes(app, settings, POOL)
     registry = load_registry(resolve_path(settings))
     check_live_models(settings, registry)
+    check_diarization_model(settings, registry)
     ctl = Controller(lm_transport or CliTransport(settings))
     memory = MemoryManager(ctl, registry, settings, meminfo or VmStatMemInfo())
     app[LIVE] = LiveManager(settings, registry, lease, memory, clock=live_clock)   # takes the ONE shared lease
@@ -101,6 +110,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
     add_jobs_routes(app)
     add_insights_routes(app, POOL)
     add_stt_runs_routes(app, settings, POOL, registry)
+    add_diarization_routes(app, settings, POOL, registry)
     add_analyses_routes(app, settings, POOL, registry)
     add_comparisons_routes(app, settings, POOL, registry)
     add_prompts_routes(app, settings, POOL)
@@ -120,6 +130,10 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         steps_stt.bind(app[POOL])
         await stt_runs.adopt_v1_transcripts(app[POOL], settings)
 
+    async def diar_hook(app):
+        from .runner import steps_diar
+        steps_diar.bind(app[POOL], settings=settings)
+
     async def prompts_hook(app):
         from .llm.prompts import sync_prompts
         from .runner import steps_analyse
@@ -132,7 +146,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
         app[RUNNER] = JobRunner(svc, settings, memory, step_registry, lease=lease, joblogs=joblogs)
         await app[RUNNER].start()
 
-    hooks = (recover_hook, seed_hook, purge_hook, stt_hook, prompts_hook, runner_hook, *hooks)
+    hooks = (recover_hook, seed_hook, purge_hook, stt_hook, diar_hook, prompts_hook, runner_hook, *hooks)
 
     async def startup(app):
         if not settings.db.url:
