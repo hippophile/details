@@ -1,7 +1,7 @@
 """Step `stt_transcribe`: run the engine worker child over the recording in windows, then store the run atomically.
 Finalizer `on_terminal`: a job that ends cancelled/failed (even while queued) sets its stt_run to match.
 The pool is bound at startup (`bind`): steps and finalizers get no pool from the runner."""
-import json, logging, re, sys, time
+import json, logging, math, re, sys, time
 
 from psycopg.types.json import Jsonb
 
@@ -61,7 +61,7 @@ async def stt_transcribe(ctx):
     await ctx.spawn_child([sys.executable, "-m", "details.engines.worker", str(spec_path)], on_line)
     if ctx.cancelled.is_set():
         return None
-    done = read_done(ctx.step_dir / "segments.jsonl")
+    done = _finite(read_done(ctx.step_dir / "segments.jsonl"))
     plan = window_plan(spec["duration_s"], spec["window_s"])
     missing = [i for i, _, _ in plan if i not in done]
     if missing:
@@ -90,6 +90,17 @@ async def stt_transcribe(ctx):
                             (wall_ms, audio_ms, audio_ms / wall_ms, " ".join(t for t in texts if t), Jsonb(raw),
                              lang_seen, run_id))
     return {"stt_run_id": run_id, "segments": len(segs)}
+
+
+def _finite(x):
+    """NaN/inf -> None, recursively: Whisper scores a lone "!" in silence as NaN and Postgres JSON rejects NaN."""
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, dict):
+        return {k: _finite(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_finite(v) for v in x]
+    return x
 
 
 async def finalize(job, status, error):

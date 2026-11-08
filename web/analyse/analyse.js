@@ -1,6 +1,6 @@
 // Analyse page: recording header + player, New run, progress (SSE with polling fallback), runs list, transcript.
 (function () {
-  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun } = window.AnalyseApi;
+  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun } = window.AnalyseApi;
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
   const player = $("player"), modelSel = $("model"), startBtn = $("start"), reason = $("reason");
@@ -105,6 +105,8 @@
   // ---- runs ---------------------------------------------------------------------------------------------
   async function loadRuns() {
     runs = await api(`/api/recordings/${rec}/stt-runs`);
+    const fresh = freshRun(runs, selected);
+    if (fresh) { selected = fresh; $("transcriptTitle").textContent = "Transcript: " + fresh.label; }
     const ul = $("runs");
     ul.replaceChildren();
     $("runsEmpty").hidden = runs.length > 0;

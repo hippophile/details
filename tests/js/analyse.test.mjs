@@ -47,3 +47,12 @@ test("pickRun falls back to a live preview when it is the only done run, and to 
   assert.equal(pickRun([{ id: "q", status: "failed" }]), undefined);
   assert.equal(pickRun([]), undefined);
 });
+
+test("freshRun swaps the selected run for its reloaded copy, so a renumbered label is not stale", () => {
+  const { freshRun } = createRequire(import.meta.url)("../../web/analyse/api.js");
+  const old = { id: "b", label: "#2 · Whisper large-v3" };
+  const reloaded = [{ id: "b", label: "#1 · Whisper large-v3" }];
+  assert.equal(freshRun(reloaded, old).label, "#1 · Whisper large-v3");
+  assert.equal(freshRun(reloaded, { id: "gone" }), null);
+  assert.equal(freshRun(reloaded, null), null);
+});

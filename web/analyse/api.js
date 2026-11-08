@@ -32,7 +32,11 @@
     const done = runs.filter((r) => r.status === "done");
     return done.find((r) => !(r.settings && r.settings.live_preview)) || done[0];
   }
-  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun };
+  // run numbers are positions, so deleting a run renumbers the rest: always show the reloaded copy
+  function freshRun(runs, selected) {
+    return (selected && runs.find((r) => r.id === selected.id)) || null;
+  }
+  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun };
   if (typeof module !== "undefined" && module.exports) module.exports = out;
   else window.AnalyseApi = out;
 })();

@@ -224,3 +224,24 @@ def test_registered_fake_engine_is_used_by_name(db, db_url, mk_settings, tmp_pat
             await wait_status(e.svc, jid, "done")
     run(go)
     assert row(db, run_id)[2] == "w0 Τι κάνεις; w1 Τι κάνεις;"
+
+
+def test_nan_logprob_is_stored_as_null_not_a_failed_run(db, db_url, mk_settings, tmp_path, monkeypatch):
+    """Whisper turbo returns avg_logprob=NaN for a lone "!" in silence; Postgres JSON rejects NaN, which failed the
+    whole run on save. A non-finite score is no score: NULL in the column and null in raw."""
+    fake_worker_env(monkeypatch, tmp_path, nan=1)
+    s = mk_settings(db_url)
+    rid = rec(db, s, seconds=3)
+
+    async def go():
+        async with env(db_url, mk_settings) as e:
+            steps_stt.bind(e.pool)
+            run_id, jid = await start(e, rid)
+            await wait_status(e.svc, jid, "done")
+            return run_id
+    run_id = run(go)
+    status, error, _, raw, *_ = row(db, run_id)
+    assert status == "done" and error is None
+    assert db.execute("SELECT count(*), count(avg_logprob) FROM transcript_segment WHERE stt_run_id=%s",
+                      (run_id,)).fetchone() == (3, 0)
+    assert all(seg["avg_logprob"] is None for w in raw["windows"] for seg in w["segments"])

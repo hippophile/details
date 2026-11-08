@@ -4,7 +4,8 @@ DETAILS_STT_PLUGINS=fakes.stt. Knobs (env, inherited by the child):
   FAKE_STT_CALLS=<file>      append one JSON line per transcribe_window call {start_s, end_s, settings}
   FAKE_STT_DELAY=<seconds>   sleep per window
   FAKE_STT_DIE_AT=<start_s>  os._exit(137) when asked to transcribe a window starting at or after this second
-  FAKE_STT_PIDFILE=<file>    write the child pid at construction"""
+  FAKE_STT_PIDFILE=<file>    write the child pid at construction
+  FAKE_STT_NAN=1             avg_logprob is NaN (mlx-whisper does this on a lone "!" in silence)"""
 import json, os, time
 
 from details.engines import ENGINES
@@ -33,8 +34,9 @@ class FakeSttEngine:
         if die is not None and start_s >= float(die):
             os._exit(137)
         self.language = settings.get("language") if settings.get("language") != "auto" else "el"
+        lp = float("nan") if os.environ.get("FAKE_STT_NAN") == "1" else -0.2
         return [Segment(int(start_s * 1000), int(end_s * 1000), f"w{int(start_s)} Τι κάνεις?",
-                        avg_logprob=-0.2, no_speech_prob=0.01)]
+                        avg_logprob=lp, no_speech_prob=0.01)]
 
 
 ENGINES["fake"] = FakeSttEngine
