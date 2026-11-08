@@ -36,6 +36,22 @@ context = 32768
 needs_gb = 17                     # 15.6 GB on disk + KV cache
 role = "nice"
 
+[llm.krikri-8b]
+engine = "lmstudio"
+label = "Krikri 8B (Greek)"
+model = "llama-krikri-8b-instruct"
+context = 16384
+needs_gb = 8                      # estimate: 5.0 GB on disk + KV cache
+role = "cheap"
+
+[llm.gemma-12b]
+engine = "lmstudio"
+label = "Gemma 4 12B"
+model = "gemma-4-12b-it-mlx"
+context = 16384
+needs_gb = 10                     # estimate: 6.8 GB on disk + KV cache
+role = "nice"
+
 [diar.community-1]
 engine = "pyannote"
 label = "pyannote community-1"

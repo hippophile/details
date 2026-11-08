@@ -24,7 +24,7 @@ LLM_OK = '[llm.b]\nengine="lmstudio"\nlabel="B"\nmodel="k"\ncontext=4096\nneeds_
 def test_shipped_entries_load():
     r = load_registry(SHIPPED)
     assert sorted(r.stt) == ["whisper-large", "whisper-turbo"]
-    assert sorted(r.llm) == ["gemma-cheap", "gemma-nice"]
+    assert sorted(r.llm) == ["gemma-12b", "gemma-cheap", "gemma-nice", "krikri-8b"]
     assert r.llm["gemma-cheap"].role == "cheap" and r.llm["gemma-nice"].role == "nice"
     assert r.stt["whisper-turbo"].engine == r.stt["whisper-large"].engine == "mlx_whisper"
     assert r.llm["gemma-nice"].engine == "lmstudio"
@@ -33,12 +33,12 @@ def test_shipped_entries_load():
 def test_shipped_keys_exist_in_recorded_lms_ls():
     keys = {m["modelKey"] for m in fixture("lms_ls.json")}
     r = load_registry(SHIPPED)
-    assert r.llm["gemma-cheap"].model in keys and r.llm["gemma-nice"].model in keys
+    assert all(m.model in keys for m in r.llm.values())
 
 
 def test_extra_block_is_listed_without_code(tmp_path):
     r = load_registry(toml(tmp_path, SHIPPED.read_text() + LLM_OK.replace("llm.b", "llm.test-model")))
-    assert "test-model" in r.llm and len(r.llm) == 3
+    assert "test-model" in r.llm and len(r.llm) == 5
 
 
 @pytest.mark.parametrize("text,entry,needle", [
@@ -112,7 +112,7 @@ def test_entry_shape_and_roles(tmp_path):
 
 def test_kind_filter_flat_list(tmp_path):
     status, body = get(tmp_path, "/api/models?kind=llm")
-    assert status == 200 and isinstance(body, list) and [m["id"] for m in body] == ["gemma-cheap", "gemma-nice"]
+    assert status == 200 and isinstance(body, list) and [m["id"] for m in body] == ["gemma-cheap", "gemma-nice", "krikri-8b", "gemma-12b"]
     assert get(tmp_path, "/api/models?kind=stt")[1][0]["kind"] == "stt"
     assert get(tmp_path, "/api/models?kind=tts")[0] == 422
 
