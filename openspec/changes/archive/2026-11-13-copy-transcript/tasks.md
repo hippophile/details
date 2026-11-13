@@ -1,0 +1,4 @@
+- [x] 1. Tests first: `tests/js/copy-transcript.test.mjs` (plain, timestamps, speaker, hour clock, empty) + pytest wrapper; show red.
+- [x] 2. `transcriptText` in `web/analyse/api.js` until green.
+- [x] 3. Button + tick-box in `index.html`, handler in `analyse.js`, minimal CSS.
+- [x] 4. Screenshot of the Analyse page; run only the tests for this change.

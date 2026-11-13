@@ -36,7 +36,12 @@
   function freshRun(runs, selected) {
     return (selected && runs.find((r) => r.id === selected.id)) || null;
   }
-  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun };
+  // plain text of a whole transcript for the clipboard: one line per segment, "[mm:ss] " only on request, "Name: " when the segment has a speaker
+  function transcriptText(segs, opts) {
+    const stamps = !!(opts && opts.timestamps);
+    return segs.map((s) => (stamps ? `[${fmtClock(s.start_ms)}] ` : "") + (s.speaker_name ? `${s.speaker_name}: ` : "") + String(s.text).trim()).join("\n");
+  }
+  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun, transcriptText };
   if (typeof module !== "undefined" && module.exports) module.exports = out;
   else window.AnalyseApi = out;
 })();

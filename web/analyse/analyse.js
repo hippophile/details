@@ -1,6 +1,6 @@
 // Analyse page: recording header + player, New run, progress (SSE with polling fallback), runs list, transcript.
 (function () {
-  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun } = window.AnalyseApi;
+  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun, transcriptText } = window.AnalyseApi;
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
   const player = $("player"), modelSel = $("model"), startBtn = $("start"), reason = $("reason");
@@ -142,10 +142,17 @@
 
   // ---- transcript ---------------------------------------------------------------------------------------
   function clearTranscript() {
-    selected = null; segEls = [];
+    selected = null; segEls = []; copyable = null; $("copyTranscript").disabled = true;
     $("transcript").replaceChildren(el("div", { className: "meta" }, "Select a run to read its transcript."));
     $("transcriptTitle").textContent = "Transcript";
   }
+  let copyable = null;    // {segs} or {text}: what the Copy transcript button puts on the clipboard (read-only, nothing is stored)
+  $("copyTranscript").onclick = async () => {
+    if (!copyable) return;
+    const text = copyable.segs ? transcriptText(copyable.segs, { timestamps: $("copyStamps").checked }) : copyable.text;
+    try { await navigator.clipboard.writeText(text); say("Copied."); }
+    catch (e) { say("Copy failed: " + e.message, true); }
+  };
   let selToken = 0;       // a newer select() (e.g. the speaker card picking a run) makes an older one stop before it draws
   async function select(r) {
     const token = ++selToken;
@@ -156,6 +163,7 @@
     await loadRuns_mark(r);
     const box = $("transcript");
     box.replaceChildren();
+    copyable = null; $("copyTranscript").disabled = true;
     $("transcriptTitle").textContent = "Transcript: " + r.label;
     if (r.status !== "done") { box.appendChild(el("div", { className: "meta" }, r.error || `This run is ${r.status}.`)); return; }
     const dr = window.Speakers && window.Speakers.pickedId();         // speaker run picked: rows get a speaker chip
@@ -164,11 +172,13 @@
     catch (e) { if (!dr) throw e; segs = await api(`/api/stt-runs/${r.id}/segments`); }
     if (token !== selToken) return;
     segEls = [];
+    if (segs.length) { copyable = { segs }; $("copyTranscript").disabled = false; }
     if (!segs.length) {
       const full = await api(`/api/stt-runs/${r.id}`);
       if (token !== selToken) return;
       box.appendChild(el("div", { className: "meta" }, "No timestamps for this run (imported from v1)."));
       box.appendChild(el("div", { className: "plain" }, full.text || ""));
+      copyable = { text: full.text || "" }; $("copyTranscript").disabled = false;
       return;
     }
     for (const s of segs) {
