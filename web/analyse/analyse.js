@@ -142,15 +142,22 @@
 
   // ---- transcript ---------------------------------------------------------------------------------------
   function clearTranscript() {
-    selected = null; segEls = []; copyable = null; $("copyTranscript").disabled = true;
+    selected = null; segEls = []; copyable = null;
     $("transcript").replaceChildren(el("div", { className: "meta" }, "Select a run to read its transcript."));
     $("transcriptTitle").textContent = "Transcript";
   }
   let copyable = null;    // {segs} or {text}: what the Copy transcript button puts on the clipboard (read-only, nothing is stored)
-  $("copyTranscript").onclick = async () => {
-    if (!copyable) return;
-    const text = copyable.segs ? transcriptText(copyable.segs, { timestamps: $("copyStamps").checked }) : copyable.text;
-    try { await navigator.clipboard.writeText(text); say("Copied."); }
+  $("copyTranscript").onclick = async () => {      // never greyed out: if the page has not kept the lines, fetch them for the selected run
+    try {
+      let src = copyable;
+      if (!src) {
+        if (!selected || selected.status !== "done") { say("Pick a finished run first.", true); return; }
+        src = { segs: await api(`/api/stt-runs/${selected.id}/segments`) };
+        if (!src.segs.length) src = { text: (await api(`/api/stt-runs/${selected.id}`)).text || "" };
+      }
+      const text = src.segs ? transcriptText(src.segs, { timestamps: $("copyStamps").checked }) : src.text;
+      await navigator.clipboard.writeText(text); say("Copied.");
+    }
     catch (e) { say("Copy failed: " + e.message, true); }
   };
   let selToken = 0;       // a newer select() (e.g. the speaker card picking a run) makes an older one stop before it draws
@@ -163,7 +170,7 @@
     await loadRuns_mark(r);
     const box = $("transcript");
     box.replaceChildren();
-    copyable = null; $("copyTranscript").disabled = true;
+    copyable = null;
     $("transcriptTitle").textContent = "Transcript: " + r.label;
     if (r.status !== "done") { box.appendChild(el("div", { className: "meta" }, r.error || `This run is ${r.status}.`)); return; }
     const dr = window.Speakers && window.Speakers.pickedId();         // speaker run picked: rows get a speaker chip
@@ -172,13 +179,13 @@
     catch (e) { if (!dr) throw e; segs = await api(`/api/stt-runs/${r.id}/segments`); }
     if (token !== selToken) return;
     segEls = [];
-    if (segs.length) { copyable = { segs }; $("copyTranscript").disabled = false; }
+    if (segs.length) copyable = { segs };
     if (!segs.length) {
       const full = await api(`/api/stt-runs/${r.id}`);
       if (token !== selToken) return;
       box.appendChild(el("div", { className: "meta" }, "No timestamps for this run (imported from v1)."));
       box.appendChild(el("div", { className: "plain" }, full.text || ""));
-      copyable = { text: full.text || "" }; $("copyTranscript").disabled = false;
+      copyable = { text: full.text || "" };
       return;
     }
     for (const s of segs) {
