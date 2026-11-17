@@ -26,26 +26,20 @@ def test_health_and_shared_css(mk_settings):
     run(go())
 
 
-def test_live_page_is_byte_identical(mk_settings):
+def test_root_redirects_to_library(mk_settings):
     async def go():
         async with client_for(create_app(mk_settings())) as c:
-            r = await c.get("/live")
-            assert r.status == 200
-            assert await r.read() == (REPO_ROOT / "web/live-v1/index.html").read_bytes()
+            r = await c.get("/", allow_redirects=False)
+            assert r.status == 302
+            assert r.headers["Location"] == "/library"
     run(go())
 
 
-def test_models_lists_fake_hub(mk_settings, tmp_path):
-    hub = tmp_path / "hub"
-    snap = hub / "models--mlx-community--whisper-fake" / "snapshots" / "abc"
-    snap.mkdir(parents=True)
-    (snap / "weights.safetensors").write_bytes(b"x")
-    (hub / "models--mlx-community--whisper-nowt").mkdir()
+def test_v1_live_routes_are_gone(mk_settings):
     async def go():
-        async with client_for(create_app(mk_settings(DETAILS_PATHS_HF_HUB=str(hub)))) as c:
-            r = await c.get("/models")
-            assert r.status == 200
-            assert await r.json() == ["mlx-community/whisper-fake"]
+        async with client_for(create_app(mk_settings())) as c:
+            for path in ("/live", "/models", "/ws"):
+                assert (await c.get(path)).status == 404, path
     run(go())
 
 

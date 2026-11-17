@@ -15,16 +15,17 @@ def get(mk_settings, path):
     return asyncio.run(go())
 
 
-def test_record_page_has_the_toggle_the_card_and_the_v1_link(mk_settings):
+def test_record_page_has_the_toggle_and_the_card(mk_settings):
     status, t = get(mk_settings, "/record")
     assert status == 200
-    for needle in ('id="liveToggle"', 'type="checkbox"', 'id="live"', 'href="/live"', "/record/live.js",
+    for needle in ('id="liveToggle"', 'type="checkbox"', 'id="live"', "/record/live.js",
                    "/record/live.css", 'id="liveStatus"', 'aria-live="polite"', 'id="liveLines"', 'id="livePartial"',
                    'id="liveNotes"', 'id="liveActions"', 'id="liveTags"'):
         assert needle in t, needle
     assert not re.search(r'id="liveToggle"[^>]*\bchecked\b', t)            # off by default
     assert re.search(r'id="live"[^>]*\bhidden\b', t)                      # card hidden until toggled
     assert t.count('aria-live="polite"') == 1                             # the status line only
+    assert 'href="/live"' not in t                                        # v1 page archived
 
 
 def test_live_assets_are_served_and_use_textcontent_only(mk_settings):
@@ -36,8 +37,8 @@ def test_live_assets_are_served_and_use_textcontent_only(mk_settings):
     assert "innerHTML" not in rec and "live_" in rec and "silence_db" in rec and "resampl" not in rec.lower()
 
 
-def test_v1_live_page_still_served(mk_settings):
-    assert get(mk_settings, "/live")[0] == 200
+def test_v1_live_page_is_gone(mk_settings):
+    assert get(mk_settings, "/live")[0] == 404
 
 
 def test_node_live_tests():

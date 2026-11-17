@@ -17,7 +17,7 @@ def main():
             reachable = "yes"
         except DatabaseError as e:
             reachable = f"no ({e})"
-    print(f"open http://localhost:{s.server.port}/live   data dir: {s.paths.data_dir}   db reachable: {reachable}")
+    print(f"open http://localhost:{s.server.port}/library   data dir: {s.paths.data_dir}   db reachable: {reachable}")
     web.run_app(create_app(s), host=BIND_HOST, port=s.server.port, print=None)
 
 

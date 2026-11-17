@@ -10,12 +10,13 @@ def test_record_page_has_controls(mk_settings):
             r = await c.get("/record")
             assert r.status == 200
             t = await r.text()
-            for needle in ('id="title"', 'id="timer"', 'id="mic"', 'role="tablist"', 'href="/live"',
+            for needle in ('id="title"', 'id="timer"', 'id="mic"', 'role="tablist"',
                            "/record/record.js", 'id="pause"', 'id="end"', "/record/pause.js"):
                 assert needle in t, needle
             assert (await c.get("/record/worklet.js")).status == 200
             assert (await c.get("/record/pause.js")).status == 200
             assert "Mic on" not in t
+            assert 'href="/live"' not in t
             for f in ("record.js", "worklet.js", "pause.js"):
                 assert "resampl" not in (await (await c.get("/record/" + f)).text()).lower()
     asyncio.run(go())

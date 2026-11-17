@@ -10,7 +10,6 @@ from .api.comparisons import add_comparisons_routes
 from .api.diarization import add_diarization_routes
 from .api.insights import add_insights_routes
 from .api.jobs import JOBS, STREAM_HUB, add_jobs_routes
-from .api.live_v1 import add_live_routes
 from .api.models import add_models_routes
 from .api.prompts import add_prompts_routes
 from .api.record import add_record_routes
@@ -78,7 +77,7 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
 
     app.router.add_get("/api/health", health)
     async def root(request):
-        raise web.HTTPFound("/live")
+        raise web.HTTPFound("/library")
 
     app.router.add_get("/", root)
     for x in PAGES:
@@ -92,7 +91,6 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
             app.router.add_static(f"/{x}/", web_dir / x)
     if (web_dir / "shared").is_dir():
         app.router.add_static("/shared/", web_dir / "shared")
-    add_live_routes(app, settings)
     add_record_routes(app, settings, POOL)
     add_recordings_routes(app, settings, POOL)
     registry = load_registry(resolve_path(settings))

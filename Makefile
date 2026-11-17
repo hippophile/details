@@ -17,7 +17,7 @@ setup-diar:       ## optional: pyannote.audio for "Who talked" (heavy install; n
 diar-model:       ## download the speaker model (needs HF_TOKEN in .env and the model terms accepted on its page)
 	PYTHONPATH=src $(PYS) -m details.diar_fetch
 
-run:              ## server on http://localhost:$${PORT:-8765}  (v1 live page at /live)
+run:              ## server on http://localhost:$${PORT:-8765}  (opens /library)
 	PYTHONPATH=src $(PYS) -m details
 
 migrate:          ## apply db/migrations/*.sql to DATABASE_URL

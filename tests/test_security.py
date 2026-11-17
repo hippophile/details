@@ -62,8 +62,8 @@ def test_cross_origin_websocket_refused(mk_settings):
     async def go():
         async with client_for(create_app(mk_settings())) as c:
             with pytest.raises(WSServerHandshakeError) as e:
-                await c.ws_connect("/ws", headers={"Origin": "http://evil.example"})
+                await c.ws_connect("/api/record/ws", headers={"Origin": "http://evil.example"})
             assert e.value.status == 403
-            ws = await c.ws_connect("/ws", headers={"Origin": f"http://127.0.0.1:{c.port}"})
+            ws = await c.ws_connect("/api/record/ws", headers={"Origin": f"http://127.0.0.1:{c.port}"})
             await ws.close()
     run(go())
