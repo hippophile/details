@@ -4,6 +4,8 @@
 
 A local AI listener for meetings. It writes down live Greek + English speech on a Mac, and nothing leaves the machine.
 
+![detAIls recording a meeting: live waveform, live transcript, rolling notes and action items](docs/screenshot-record.png)
+
 **Also known as**, in an earlier life and several naming meetings:
 - **Debrief AI**: sounded like it would make you fill in a form afterwards.
 - **AI Memo**: too short to argue with.
