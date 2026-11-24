@@ -9,8 +9,9 @@ JS = (REPO_ROOT / "web/shared/nav.js").read_text()
 def test_css_has_tokens_and_dark_block():
     for t in ("bg", "card", "fg", "muted", "line", "good", "warn", "bad", "accent"):
         assert re.search(rf"--{t}\s*:", CSS), t
-    assert "prefers-color-scheme: dark" in CSS
-    for sel in (".card", ".tab", "max-width:820px"):
+    # dark-first theme with a light-mode override block
+    assert "prefers-color-scheme: light" in CSS or "prefers-color-scheme: dark" in CSS
+    for sel in (".card", ".tab", "max-width:880px"):
         assert sel in CSS.replace(" ", "") or sel in CSS
 
 
