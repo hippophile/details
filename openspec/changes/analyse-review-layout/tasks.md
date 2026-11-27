@@ -15,5 +15,10 @@
 ## 3. Prove on real data
 - [ ] 3.1 Screenshots as in Verification (needs the app restarted on this code).
 
+## 3b. Follow-ups from the browser check
+- [x] 3b.1 Red tests: char loop collapsed (and 7 repeats kept); CSS rule present; chapter list unbulleted; static
+      response carries `Cache-Control: no-cache`.
+- [x] 3b.2 Implement; `make test` once.
+
 ## 4. Close
 - [ ] 4.1 validate, tick, archive, commit.

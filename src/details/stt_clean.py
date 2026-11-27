@@ -6,6 +6,7 @@ from .llm.quotes import norm
 
 JUNK = ("υπότιτλοι", "υποτιτλοι", "authorwave", "subtitles")      # known Whisper hallucinations on silence (as in v1)
 LOOP_MIN, LOOP_MAX_UNIT = 8, 4      # a 1-4 word unit repeated 8+ times in a row is a decoder loop (5 can be speech)
+CHAR_LOOP = re.compile(r"(.)\1{7,}", re.S)   # one character 8+ times in a row ("Υiiiiiiiii…") is a decoder loop
 JOIN_SLACK_S = 2                    # a join duplicate starts within overlap_s + this of the window join
 
 
@@ -63,7 +64,8 @@ def clean(segments, duration_ms, window_s=None, overlap_s=0):
             c["junk"] += 1
             continue
         text, n = collapse_loops(s["text"])
-        c["loops"] += n
+        text, m = CHAR_LOOP.subn(r"\1", text)
+        c["loops"] += n + m
         if not text.strip() or s["start_ms"] >= duration_ms:
             continue
         s = {**s, "text": text}

@@ -32,3 +32,13 @@ def test_missing_page_is_404(mk_settings, tmp_path):
         async with client_for(create_app(mk_settings(), web_dir=tmp_path / "empty")) as c:
             assert (await c.get("/record")).status == 404
     asyncio.run(go())
+
+
+def test_static_files_revalidate_but_api_is_untouched(mk_settings, tmp_path):
+    w = stub_web(tmp_path)
+    async def go():
+        async with client_for(create_app(mk_settings(), web_dir=w)) as c:
+            for p in ("/analyse/app.js", "/analyse", "/record"):
+                assert (await c.get(p)).headers["Cache-Control"] == "no-cache", p
+            assert "no-cache" not in (await c.get("/api/health")).headers.get("Cache-Control", "")
+    asyncio.run(go())

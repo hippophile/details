@@ -302,11 +302,11 @@
     for (const s of v.sections) {
       panel.appendChild(el("h3", null, s.heading));
       if (!s.items.length) { panel.appendChild(el("div", { className: "meta" }, s.empty)); continue; }
-      panel.appendChild(briefList(s.items));
+      panel.appendChild(briefList(s.items, s.key === "chapters" ? "chapters" : null));
     }
   }
-  function briefList(items) {
-    const ul = el("ul");
+  function briefList(items, cls) {
+    const ul = el("ul", cls ? { className: cls } : null);
     for (const x of items) {
       const li = el("li", { className: "item" + (x.unverified ? " unverified" : "") });
       if (x.jump !== null) {

@@ -91,6 +91,10 @@ def create_app(settings, *, web_dir=None, migrations_dir=MIGRATIONS_DIR, hooks=(
             app.router.add_static(f"/{x}/", web_dir / x)
     if (web_dir / "shared").is_dir():
         app.router.add_static("/shared/", web_dir / "shared")
+    async def no_cache(request, response):
+        if not request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache"   # revalidate web/ files on every load
+    app.on_response_prepare.append(no_cache)
     add_record_routes(app, settings, POOL)
     add_recordings_routes(app, settings, POOL)
     registry = load_registry(resolve_path(settings))

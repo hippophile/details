@@ -11,6 +11,7 @@
 #aiPanel h3 { font-size:15px; margin:14px 0 6px; }
 #aiPanel p.summary { margin:0 0 6px; }
 #aiPanel ul { margin:0 0 6px; padding-left:20px; }
+#aiPanel ul.chapters { list-style:none; padding-left:0; }
 #aiPanel ul.ckl { list-style:none; padding-left:0; }
 .ck { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; padding:6px 4px; border-bottom:1px solid var(--line); }
 .ck input { width:18px; height:18px; flex:none; align-self:center; }

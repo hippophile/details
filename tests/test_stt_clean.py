@@ -30,6 +30,11 @@ def test_multiword_loop_collapsed():
     assert texts(out) == ["ναι ναι οκ"] and c["loops"] == 1
 
 
+def test_char_loop_collapsed_but_seven_repeats_stay():
+    out, c = clean([seg(0, 5000, "Υ" + "i" * 300 + " ok"), seg(5000, 6000, "Υ" + "i" * 7)], 10000)
+    assert texts(out) == ["Υi ok", "Υiiiiiii"] and c["loops"] == 1
+
+
 def test_real_repetition_is_kept():
     segs = [seg(0, 1000, "Gehelfen Gehelfen")] + [seg(1000 + i * 1000, 2000 + i * 1000, "Gehelfen") for i in range(4)]
     out, c = clean(segs, 10000)

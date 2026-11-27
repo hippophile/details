@@ -39,3 +39,14 @@ Write-up, Runs, Who talked, Transcript. The transcript is the last card and is a
 - Paragraph spans need their own playing-highlight CSS rule (`.seg.on` only styles rows); `segEls` must hold the spans.
 - With New run / AI model below the transcript, starting the first run means scrolling past it: when a recording has
   no done run, those two cards stay above the transcript.
+
+## Follow-ups from the browser check (orchestrator, 2026-11-27, app restarted on this branch)
+Seen on `manos-filipGerman` run #4 (large, el+en+de) and analysis #6 (Brief, Gemma 12B):
+1. **Character loop not cleaned** (`stt-clean-windows`): at 03:24 a segment holds "Υiiiii…" (one letter stretched
+   hundreds of times). `clean()` collapses any single character repeated 8+ times in a row to one, counted under
+   `loops`. New runs only.
+2. **Overflow**: an unbroken long string spills out of the transcript card. Transcript text (paragraph and line views)
+   and write-up text use `overflow-wrap: anywhere`.
+3. **Chapters show a double marker** (list bullet + ▶). The chapter list has no list bullet.
+4. **Stale scripts after a restart**: the browser kept the old `outputs.js` until a hard reload. Static files under
+   `web/` are served with `Cache-Control: no-cache` (revalidate every load; local app, cost negligible).

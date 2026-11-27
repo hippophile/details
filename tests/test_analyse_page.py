@@ -68,3 +68,11 @@ def test_transcript_toggle_defaults_to_paragraphs_and_both_views_exist(mk_settin
 def test_new_run_and_ai_model_stay_above_the_transcript_when_no_run_is_done(mk_settings):
     js, = fetch(mk_settings, "/analyse/analyse.js")
     assert 'transcriptCard").before(' in js and "pickRun(runs)" in js
+
+
+def test_long_strings_wrap_and_chapter_list_has_no_bullet(mk_settings):
+    css, ocss, js = fetch(mk_settings, "/analyse/analyse.css", "/analyse/outputs.css", "/analyse/outputs.js")
+    assert re.search(r"\.seg \.x[^{]*\{[^}]*overflow-wrap:\s*anywhere", css)
+    assert re.search(r"\.para \.x[^{]*\{[^}]*overflow-wrap:\s*anywhere", css)
+    assert re.search(r"#aiPanel[^{]*\{[^}]*overflow-wrap:\s*anywhere", ocss)
+    assert re.search(r"ul\.chapters[^{]*\{[^}]*list-style:\s*none", ocss) and 'briefList(s.items, s.key === "chapters"' in js
