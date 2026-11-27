@@ -131,3 +131,19 @@ def test_spec_without_overlap_s_gives_the_old_window_calls(tmp_path, monkeypatch
     c = [json.loads(x) for x in calls.read_text().splitlines()]
     assert [(x["start_s"], x["end_s"]) for x in c] == [(0, 1), (1, 2), (2, 3)]
     assert len(segs_text(out / "segments.jsonl")) == 3
+
+
+def test_window_records_carry_language_and_lang_probs(tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path, langs="el,de,el")
+    p, out = spec(tmp_path, seconds=3, settings={**SETTINGS, "also": ["en", "de"], "switch_min_share": 0.7})
+    assert run_worker(p).returncode == 0
+    got = lines(out / "segments.jsonl")
+    assert [g["language"] for g in got] == ["el", "de", "el"]
+    assert set(got[1]["lang_probs"]) == {"el", "en", "de"} and got[1]["lang_probs"]["de"] >= 0.7
+
+
+def test_without_also_lang_probs_is_null(tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path, langs="el,de,el")
+    p, out = spec(tmp_path, seconds=2)
+    assert run_worker(p).returncode == 0
+    assert [g["lang_probs"] for g in lines(out / "segments.jsonl")] == [None, None]

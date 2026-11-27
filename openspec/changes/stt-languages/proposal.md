@@ -77,3 +77,78 @@ Mixing two languages inside one 30 s window; German-specific models; translating
   that has `raw.cleaned`; else today's rule. The list query exposes `cleaned` as a boolean.
 - Confirmed feasible (audit read installed mlx-whisper): `model.detect_language(mel)` with `log_mel_spectrogram` +
   `pad_or_trim(N_FRAMES)` and the dtype cast, as in `transcribe.py:150-175`.
+
+## Implementation notes (task 2.1)
+mlx-whisper functions used, as in `transcribe.py:150-175`: `ModelHolder.get_model(repo, mx.float16)` (the same cached model
+the decode uses), `audio.log_mel_spectrogram(x, n_mels=model.dims.n_mels, padding=N_SAMPLES)`, `audio.pad_or_trim(mel,
+N_FRAMES, axis=-2).astype(float16)`, `model.detect_language(mel)` -> `(tokens, {code: prob over all languages})`.
+The probabilities are taken on the audio the engine is given: with `overlap_s` that is the window plus 3 s before it, cut to
+30 s, so the language is judged on slightly earlier audio than the window's own start. `pick_language` lives in
+`engines/mlx_whisper.py`. Page: names of the extra languages come from `Intl.DisplayNames` in the browser (no list in script).
+
+## Measured (2026-11-27, task 3.1)
+`manos-filipGerman` (919.8 s, 31 windows), turbo, run through `details.engines.worker` directly with `language=el`,
+`also=[en,de]`, `switch_min_share=0.7`, `overlap_s=3` (spec + output: scratchpad `lang-proof/`). Old run = run #3, Auto.
+Wall: **139.4 s** total for the process (model load included) vs old **131.7 s** (+6%; the old run had no overlap, so
+overlap and the detection pass are not separable here).
+Windows per language: old Auto `el 17, en 13, de 1`; new `el 27, en 4, de 0` (new `en` = windows 3, 21, 24, 28).
+
+| idx | start s | old | new | shares el/en/de | first segment of the new window |
+|---|---|---|---|---|---|
+| 0 | 0 | el | el | 0.87/0.13/0.00 | Ωραία! |
+| 1 | 30 | el | el | 0.54/0.46/0.00 | Δεν είναι πολύ δυνατό |
+| 2 | 60 | el | el | 0.61/0.39/0.01 | Γετρύγκτ |
+| 3 | 90 | el | en | 0.26/0.72/0.02 | I don't think it would be a good word |
+| 4 | 120 | el | el | 0.93/0.07/0.00 | Γεσχάιμπεν είπα, άντεξη |
+| 5 | 150 | el | el | 0.93/0.07/0.00 | List |
+| 6 | 180 | el | el | 0.87/0.13/0.00 | Μόνο αυτό, επειδή είναι E-I |
+| 7 | 210 | en | el | 0.48/0.51/0.01 | Δεν πιστεύω ότι θα το αφήσω, θα το αφήσω τώρα |
+| 8 | 240 | el | el | 0.34/0.65/0.01 | Υποχαλό. |
+| 9 | 270 | el | el | 0.73/0.26/0.01 | Ναι, να ξέρε, πού είναι τα όμαλα |
+| 10 | 300 | en | el | 0.44/0.55/0.01 | Γεσπράχεν |
+| 11 | 330 | en | el | 0.83/0.17/0.00 | Έτσι και είναι τώρα και μετά τα άλλα είναι γιουβ |
+| 12 | 360 | el | el | 0.42/0.57/0.01 | Γενόμεν |
+| 13 | 390 | en | el | 0.57/0.42/0.01 | Τι, πώς είναι, δάμπλε και τάφ. |
+| 14 | 420 | el | el | 0.71/0.28/0.00 | Δάπλε και τάφ |
+| 15 | 450 | en | el | 0.49/0.50/0.01 | Εγώ θα πω... |
+| 16 | 480 | el | el | 0.75/0.25/0.00 | Εγώ νομίζω αφάζεις μπ |
+| 17 | 510 | en | el | 0.39/0.60/0.01 | Ευχαριστώ. |
+| 18 | 540 | el | el | 0.87/0.13/0.00 | Υκοίια 2 |
+| 19 | 570 | el | el | 0.62/0.38/0.01 | Να επιχειρήσουμε |
+| 20 | 600 | de | el | 0.00/0.37/0.63 | Γεμάχτ. |
+| 21 | 630 | en | en | 0.02/0.71/0.27 | Worked. |
+| 22 | 660 | en | el | 0.42/0.58/0.01 | Φουακ |
+| 23 | 690 | el | el | 0.55/0.44/0.01 | Γεγέσεν |
+| 24 | 720 | en | en | 0.27/0.71/0.02 | I want to say that I can write |
+| 25 | 750 | el | el | 0.40/0.59/0.01 | Γελέζει, όχι γελίζει. |
+| 26 | 780 | el | el | 0.48/0.51/0.01 | Νίμντ. |
+| 27 | 810 | en | el | 0.36/0.64/0.01 | Γεφώντεν. |
+| 28 | 840 | en | en | 0.26/0.73/0.02 | It will be gone |
+| 29 | 870 | en | el | 0.43/0.55/0.02 | ...βεστέχτετ |
+| 30 | 900 | en | el | 0.44/0.56/0.00 | Καλημένα λοιπόν, γρήγορο stand up |
+**Reading (text only; I cannot listen to audio).**
+- Switched away from `el` (4 windows): w3 "I don't think it would be a good word" and w21 "Worked." are English words; w24
+  "I want to say that I can write" and w28 "It will be gone" read as English sentences. All four shares are 0.71-0.73, just over
+  the threshold. Whether Greek speakers really said English there needs listening; in the old run w21 was "I like this."
+  and w24 "I want to say geschrieben", so English is plausible, German words inside English windows stay misspelled.
+- Stayed `el` where the old run chose `en` (3 of 10): w10 old "gesprochen" -> new "Γεσπράχεν"; w11 old "That's right now and
+  then the other one is Juvec a" -> new "Έτσι και είναι τώρα και μετά τα άλλα είναι γιουβ"; w30 old "I'm sorry" -> new
+  "Καλημένα λοιπόν, γρήγορο stand up". The English the old run wrote there (w11, w17 "And the Versticht is the same") is
+  mostly mis-heard Greek/German; the new text is Greek letters, German words spelled phonetically (the known Greek-forcing
+  trade-off). w17 new "Ευχαριστώ." looks like a Whisper filler on a quiet window (not judged).
+- The one window the old run decoded as German (w20, text "Kochen kocht gekocht. Lernen lernt gelernt...") has `de` 0.63,
+  below 0.7, so it stayed Greek ("Γεμάχτ."): **a clearly German window was lost.**
+- Shares of `en` between windows are mostly 0.4-0.6, only four reach 0.7; `de` is ~0 everywhere except w20.
+**Threshold.** No value separates the cases cleanly from one recording. 0.7 is conservative (4 switches, all English-looking).
+Lowering to 0.6 would also switch w20 (the German one) but also w8 (0.65, text "Υποχαλό."), w17 (0.60), w27 (0.64), which look
+Greek. I did not tune it. Suggestion: keep 0.7 and re-judge by ear on the four `en` windows and w20 before changing.
+
+## Open after the real run (orchestrator, 2026-11-27): the switch rule needs listening evidence
+Per-window shares on `manos-filipGerman` show Whisper over-reads English on these Greek voices (clearly Greek windows
+at en 0.55–0.65). The fixed `switch_min_share = 0.7` rule therefore misfires both ways:
+- window 20 (10:00, German conjugation drill): el 0.00 / en 0.37 / de 0.63 → stayed `el`, German written in Greek letters;
+- window 21 (10:30, German "arbeitet/hört/gehört"): el 0.02 / en 0.71 / de 0.27 → switched to `en` ("Worked… Gehurt").
+Candidate rule (not implemented): stay in the primary unless its share is ≤ 0.10, then use the top other language.
+On this run it moves window 20 to `de`, keeps 3/24/28 in Greek, and still sends 21 to `en`.
+Decision waits for the owner to listen to windows 3 (1:30), 20 (10:00), 21 (10:30), 24 (12:00), 28 (14:00).
+Until then the archive (task 4.1) stays open; the mechanism, storage, labels and page are done and tested.

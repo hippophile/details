@@ -2,6 +2,7 @@
 .rec-title { font-size:18px; font-weight:600; overflow-wrap:anywhere; }
 audio { width:100%; margin-top:10px; }
 .check { display:flex; align-items:center; gap:6px; padding-top:20px; }
+#also label { margin-right:12px; }
 .btn.sm { font-size:14px; padding:6px 14px; }
 .btn.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
 #newRun .btn { margin-top:20px; }

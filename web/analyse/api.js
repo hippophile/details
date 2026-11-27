@@ -27,10 +27,18 @@
     if (text != null) e.textContent = text;
     return e;
   }
-  // The run Analyse opens first: the first done run that is not a live preview (live-assistant), else the first done run.
+  // The run Analyse opens first (runs are newest first): a done, non-live-preview run that is accurate and cleaned, else
+  // the newest cleaned one, else the first done run that is not a live preview (live-assistant), else the first done run.
   function pickRun(runs) {
     const done = runs.filter((r) => r.status === "done");
-    return done.find((r) => !(r.settings && r.settings.live_preview)) || done[0];
+    const full = done.filter((r) => !(r.settings && r.settings.live_preview));
+    return full.find((r) => r.cleaned && r.model_role === "accurate") || full.find((r) => r.cleaned) || full[0] || done[0];
+  }
+  // POST body of a new run; `also` is only sent with a fixed language and at least one extra language ticked
+  function startBody(modelId, language, hint, also) {
+    const b = { model_id: modelId, language, vocab_hint: hint };
+    if (language !== "auto" && also && also.length) b.also = also;
+    return b;
   }
   // run numbers are positions, so deleting a run renumbers the rest: always show the reloaded copy
   function freshRun(runs, selected) {
@@ -41,7 +49,7 @@
     const stamps = !!(opts && opts.timestamps);
     return segs.map((s) => (stamps ? `[${fmtClock(s.start_ms)}] ` : "") + (s.speaker_name ? `${s.speaker_name}: ` : "") + String(s.text).trim()).join("\n");
   }
-  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun, transcriptText };
+  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, startBody, freshRun, transcriptText };
   if (typeof module !== "undefined" && module.exports) module.exports = out;
   else window.AnalyseApi = out;
 })();

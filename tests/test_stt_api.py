@@ -146,3 +146,68 @@ def test_startup_adopts_v1_transcripts_and_library_counts_them(db, db_url, mk_se
         lib = await (await c.get("/api/recordings")).json()
         assert {r["title"]: r["runs_count"] for r in lib} == {"with": 1, "without": 0}
     api(db_url, mk_settings, body)
+
+
+def test_also_is_accepted_and_stored_in_the_run_settings(db, db_url, mk_settings, tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path)
+    rid = rec(db, mk_settings(db_url), seconds=1)
+    hub = hub_with(tmp_path, TURBO)
+
+    async def body(c, s):
+        r = await post(c, rid, model_id="whisper-turbo", language="el", also=["en", "de"])
+        assert r.status == 202
+        r2 = await post(c, rid, model_id="whisper-turbo", language="el")
+        assert r2.status == 202
+        lst = await (await c.get(f"/api/recordings/{rid}/stt-runs")).json()
+        by = {x["id"]: x["settings"] for x in lst}
+        assert by[(await r.json())["stt_run_id"]]["also"] == ["en", "de"]
+        assert by[(await r.json())["stt_run_id"]]["switch_min_share"] == 0.7
+        assert by[(await r2.json())["stt_run_id"]]["also"] == []
+
+        async def both():
+            return all(x["status"] == "done" for x in await (await c.get(f"/api/recordings/{rid}/stt-runs")).json())
+        await wait_until(both, what="both done")
+    api(db_url, mk_settings, body, hub, DETAILS_STT_WINDOW_S="1")
+
+
+def test_bad_also_is_422_with_a_message_and_starts_nothing(db, db_url, mk_settings, tmp_path):
+    rid = rec(db, mk_settings(db_url))
+    hub = hub_with(tmp_path, TURBO)
+
+    async def body(c, s):
+        for also, language, word in ((["is"], "el", "is"), (["en", "en"], "el", "duplicate"), (["el"], "el", "primary"),
+                                     (["en"], "auto", "auto"), ("en", "el", "list"), ([1], "el", "list")):
+            r = await post(c, rid, model_id="whisper-turbo", language=language, also=also)
+            assert r.status == 422, (also, language)
+            assert word in (await r.json())["error"], (also, language)
+        assert (await post(c, rid, model_id="whisper-turbo", language="auto", also=[])).status in (202, 409)
+    api(db_url, mk_settings, body, hub)
+    assert db.execute("SELECT count(*) FROM stt_run WHERE settings->>'language'='el'").fetchone()[0] == 0
+
+
+def test_list_exposes_model_role_cleaned_languages_and_the_requested_setting_in_the_label(db, db_url, mk_settings):
+    rid = rec(db, mk_settings(db_url))
+    j = lambda o: json.dumps(o)
+    insert_run(db, rid, model_id="whisper-turbo", language="el", wall_ms=132000, audio_ms=920000, rtf=7.0,
+               settings=j({"language": "auto", "also": []}), raw=j({"cleaned": {"junk": 0}, "languages": {"el": 18, "en": 13}}))
+    insert_run(db, rid, model_id="whisper-large", language="el", wall_ms=9000, audio_ms=77000, rtf=8.0,
+               settings=j({"language": "el", "also": ["de"]}))
+    insert_run(db, rid, model_id="whisper-large", language="el", wall_ms=9000, audio_ms=77000, rtf=8.0,
+               settings=j({"language": "el"}))
+    insert_run(db, rid, model_id="unknown (v1 import)", text="old", settings=j({"source": "v1-transcript.txt"}))
+
+    async def body(c, s):
+        lst = await (await c.get(f"/api/recordings/{rid}/stt-runs")).json()
+        assert all("raw" not in x for x in lst)
+        auto = next(x for x in lst if x["settings"].get("language") == "auto")
+        assert auto["language"] == "el" and auto["languages"] == {"el": 18, "en": 13} and "Auto" in auto["label"]
+        assert auto["cleaned"] is True and auto["model_role"] == "fast"
+        de = next(x for x in lst if x["settings"].get("also") == ["de"])
+        assert "Ελληνικά + de" in de["label"] and de["cleaned"] is False and de["model_role"] == "accurate"
+        plain = next(x for x in lst if x["settings"] == {"language": "el"})
+        assert "Ελληνικά" in plain["label"] and "+" not in plain["label"]
+        v1 = next(x for x in lst if x["model_id"] == "unknown (v1 import)")
+        assert v1["model_role"] is None and "Auto" not in v1["label"] and "Ελληνικά" not in v1["label"]
+        one = await (await c.get(f"/api/stt-runs/{de['id']}")).json()
+        assert "Ελληνικά + de" in one["label"]
+    api(db_url, mk_settings, body)

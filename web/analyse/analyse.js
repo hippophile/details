@@ -1,6 +1,6 @@
 // Analyse page: recording header + player, New run, progress (SSE with polling fallback), runs list, transcript.
 (function () {
-  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, freshRun, transcriptText } = window.AnalyseApi;
+  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, startBody, freshRun, transcriptText } = window.AnalyseApi;
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
   const player = $("player"), modelSel = $("model"), startBtn = $("start"), reason = $("reason");
@@ -41,11 +41,30 @@
     syncStart();
   }
   modelSel.onchange = syncStart;
+  // "Also spoken" boxes: the codes come from the server, the names from the browser (each in its own language)
+  const alsoBoxes = [];
+  const alsoTicked = () => alsoBoxes.filter((b) => b.checked).map((b) => b.value);
+  function syncAlso() { for (const b of alsoBoxes) b.disabled = $("lang").value === "auto"; }
+  async function loadAlso() {
+    const { extra } = await api("/api/models?kind=stt_languages");
+    for (const code of extra) {
+      let name = code;
+      try { name = new Intl.DisplayNames([code], { type: "language" }).of(code); } catch (e) { /* unknown code: show it */ }
+      const box = el("input", { type: "checkbox", value: code });
+      alsoBoxes.push(box);
+      const lab = el("label");
+      lab.append(box, " " + name.charAt(0).toUpperCase() + name.slice(1));
+      $("also").appendChild(lab);
+    }
+    $("alsoWrap").hidden = !extra.length;
+    syncAlso();
+  }
+  $("lang").onchange = syncAlso;
   startBtn.onclick = async () => {
     startBtn.disabled = true;
     try {
       const r = await api(`/api/recordings/${rec}/stt-runs`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_id: modelSel.value, language: $("lang").value, vocab_hint: $("hint").checked }) });
+        body: JSON.stringify(startBody(modelSel.value, $("lang").value, $("hint").checked, alsoTicked())) });
       say("");
       await loadRuns();
       watch(r.job_id);
@@ -222,6 +241,7 @@
       $("recMeta").textContent = `${new Date(r.started_at).toLocaleString()} · ${fmtClock(r.duration_ms)}`;
       player.src = `/api/recordings/${encodeURIComponent(rec)}/audio`;
     } catch (e) { $("recTitle").textContent = "Recording not found"; $("newRun").hidden = true; say(e.message, true); return; }
+    try { await loadAlso(); } catch (e) { /* the run can still start without extra languages */ }
     try { await loadModels(); } catch (e) { reason.textContent = "Could not load models: " + e.message; startBtn.disabled = true; }
     try { await loadRuns(); } catch (e) { say("Could not load runs: " + e.message, true); }
     const done = pickRun(runs);

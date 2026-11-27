@@ -151,6 +151,18 @@ def test_stt_overlap_s_loads_env_override_and_negative_rejected(cfg):
         load(cfg, env={"DETAILS_STT_OVERLAP_S": "-1"})
 
 
+def test_stt_languages_keys_load_env_override_and_bad_values_rejected(cfg):
+    s = load(cfg)
+    assert s.stt.extra_languages == "en,de" and s.stt.switch_min_share == 0.7
+    assert load(cfg, env={"DETAILS_STT_EXTRA_LANGUAGES": "en,de,fr"}).stt.extra_languages == "en,de,fr"
+    assert load(cfg, env={"DETAILS_STT_SWITCH_MIN_SHARE": "0.9"}).stt.switch_min_share == 0.9
+    for var, bad, key in (("SWITCH_MIN_SHARE", "0.4", "switch_min_share"), ("SWITCH_MIN_SHARE", "1.1", "switch_min_share"),
+                          ("EXTRA_LANGUAGES", "en,,de", "extra_languages"), ("EXTRA_LANGUAGES", "en,en", "extra_languages"),
+                          ("EXTRA_LANGUAGES", "auto", "extra_languages")):
+        with pytest.raises(SettingsError, match=rf"stt\.{key}"):
+            load(cfg, env={f"DETAILS_STT_{var}": bad})
+
+
 def test_llm_section_defaults_env_override_and_validation(cfg):
     s = load(cfg)
     assert s.llm.single_pass_max_tokens == 20000 and s.llm.chars_per_token == 2.5

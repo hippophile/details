@@ -4,7 +4,7 @@ from conftest import client_for
 from details.app import create_app
 
 IDS = ("recHeader", "player", "noRec", "newRun", "model", "lang", "hint", "start", "reason", "progress", "stage",
-       "pct", "elapsed", "cancel", "runs", "transcript", "aiSlot", "nav")
+       "pct", "elapsed", "cancel", "also", "runs", "transcript", "aiSlot", "nav")
 
 
 def fetch(mk_settings, *paths):
@@ -32,6 +32,13 @@ def test_page_served_with_expected_ids_and_assets(mk_settings):
 def test_no_hardcoded_model_ids_anywhere(mk_settings):
     for text in fetch(mk_settings, "/analyse", "/analyse/analyse.js", "/analyse/api.js", "/analyse/analyse.css"):
         assert not re.search(r"whisper-(turbo|large)|mlx-community", text)
+
+
+def test_also_spoken_checkboxes_come_from_the_models_api_and_no_language_code_is_in_the_script(mk_settings):
+    html, js, api = fetch(mk_settings, "/analyse", "/analyse/analyse.js", "/analyse/api.js")
+    assert "Also spoken" in html and 'id="also"' in html
+    assert "/api/models?kind=stt_languages" in js and "startBody" in js and "disabled" in js
+    assert '"en"' not in js + api and '"de"' not in js + api and "'en'" not in js + api and "'de'" not in js + api
 
 
 def test_js_uses_models_api_sse_poll_and_seek_without_innerhtml(mk_settings):

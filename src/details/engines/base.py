@@ -20,6 +20,7 @@ class SttEngine(Protocol):
     name: str
     supports_words: bool
     language: str | None      # language detected/used in the last window (the worker records it)
+    lang_probs: dict | None   # {code: share} over primary + settings["also"] for the last window; None when not computed
 
     def __init__(self, model: dict): ...          # model = models.toml block (repo, ...)
 

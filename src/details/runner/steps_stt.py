@@ -44,7 +44,8 @@ async def stt_transcribe(ctx):
             "duration_s": audio_ms / 1000, "window_s": rs.get("window_s") or ctx.settings.stt.window_s,
             "overlap_s": rs.get("overlap_s", 0),      # a run stored before overlap existed keeps hard windows
             "settings": {"language": rs.get("language", "el"), "initial_prompt": rs.get("initial_prompt"),
-                         "condition_on_previous_text": False},
+                         "condition_on_previous_text": False, "also": rs.get("also") or [],
+                         "switch_min_share": rs.get("switch_min_share", ctx.settings.stt.switch_min_share)},
             "out_dir": str(ctx.step_dir),
             "plugins": [m.strip() for m in ctx.settings.stt.plugins.split(",") if m.strip()]}
     spec_path = ctx.step_dir / "spec.json"
@@ -69,11 +70,12 @@ async def stt_transcribe(ctx):
     if missing:
         raise StepError(f"worker finished without windows {missing[:5]}")
     wall_ms = max(1, round((time.monotonic() - t0) * 1000))
-    got, lang_seen = [], None
+    got, langs = [], {}
     for i, _, _ in plan:
         w = done[i]
         lang = w.get("language") or (rs.get("language") if rs.get("language") != "auto" else None)
-        lang_seen = lang_seen or lang
+        if lang:
+            langs[lang] = langs.get(lang, 0) + 1
         for s in w["segments"]:
             got.append({**s, "text": stt_runs.greek_postfix(s["text"]) if lang == "el" else s["text"]})
     got, counts = clean(got, audio_ms, spec["window_s"], spec["overlap_s"])
@@ -83,7 +85,7 @@ async def stt_transcribe(ctx):
         segs.append((len(segs), s["start_ms"], s["end_ms"], t, s.get("avg_logprob"), s.get("no_speech_prob"),
                      Jsonb(s["words"]) if s.get("words") else None))
         texts.append(t.strip())
-    raw = {"windows": [done[i] for i, _, _ in plan], "cleaned": counts}
+    raw = {"windows": [done[i] for i, _, _ in plan], "cleaned": counts, "languages": langs}
     async with pool.connection() as c:
         async with c.transaction():
             await c.execute("DELETE FROM transcript_segment WHERE stt_run_id=%s", (run_id,))
@@ -94,7 +96,7 @@ async def stt_transcribe(ctx):
             await c.execute("UPDATE stt_run SET status='done', finished_at=now(), wall_ms=%s, audio_ms=%s, rtf=%s, "
                             "text=%s, raw=%s, language=COALESCE(language, %s), error=NULL WHERE id=%s",
                             (wall_ms, audio_ms, audio_ms / wall_ms, " ".join(t for t in texts if t), Jsonb(raw),
-                             lang_seen, run_id))
+                             max(langs, key=langs.get) if langs else None, run_id))
     return {"stt_run_id": run_id, "segments": len(segs)}
 
 

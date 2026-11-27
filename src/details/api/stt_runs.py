@@ -25,10 +25,12 @@ def add_stt_runs_routes(app, settings, pool_key, registry):
             return err("vocab_hint must be a boolean and initial_prompt a string", 422)
         language = body.get("language", "el")
         try:
-            await stt_runs.check_model(registry, settings, body.get("model_id"), language)
+            await stt_runs.check_model(registry, settings, body.get("model_id"), language,
+                                       body.get("also"))
             run_id, job_id = await stt_runs.start_run(
                 pool(request), request.app[JOBS], registry, settings, request.match_info["id"], body["model_id"],
-                language=language, vocab_hint=body.get("vocab_hint", False), initial_prompt=body.get("initial_prompt"))
+                language=language, vocab_hint=body.get("vocab_hint", False), initial_prompt=body.get("initial_prompt"),
+                also=body.get("also"))
         except stt_runs.StartError as e:
             return err(e.message, e.status)
         return web.json_response({"stt_run_id": run_id, "job_id": job_id}, status=202)

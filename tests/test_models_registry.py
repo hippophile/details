@@ -117,6 +117,14 @@ def test_kind_filter_flat_list(tmp_path):
     assert get(tmp_path, "/api/models?kind=tts")[0] == 422
 
 
+def test_stt_languages_kind_lists_primary_and_extra_from_settings(tmp_path):
+    assert get(tmp_path, "/api/models?kind=stt_languages") == (200, {"primary": ["el"], "extra": ["en", "de"]})
+    assert get(tmp_path, "/api/models?kind=stt_languages", DETAILS_STT_EXTRA_LANGUAGES="fr")[1]["extra"] == ["fr"]
+    assert get(tmp_path, "/api/models")[1]["stt_languages"]["primary"] == ["el"]
+    status, body = get(tmp_path, "/api/models?kind=tts")
+    assert status == 422 and "stt_languages" in body["error"]
+
+
 def test_lmstudio_unreachable_is_200(tmp_path):
     status, body = get(tmp_path, "/api/models", lm=FakeLMStudio(reachable=False))
     assert status == 200 and body["lmstudio"] == {"reachable": False}

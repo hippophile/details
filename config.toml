@@ -48,6 +48,8 @@ log_max_lines = 5000              # job log cap (lines); then one "log truncated
 window_s = 30                     # audio is transcribed in windows of this many seconds (checkpoint + resume unit)
 overlap_s = 3                    # extra seconds decoded on each side of a window so words at a join are not cut (+~20% decode time, estimate)
 vocab_hint = "Συνάντηση για AI adoption, agents, local LLM, RAG, embeddings, PostgreSQL, pgvector, MCP, AI Act, GDPR, Azure OpenAI, Docker, CI/CD, GitHub Actions, pull request, sprint, .NET, Blazor, KPIs, Jira, backlog."
+extra_languages = "en,de"         # DETAILS_STT_EXTRA_LANGUAGES: codes a run may list as also spoken (besides Greek)
+switch_min_share = 0.7            # a window is decoded in an also-spoken language only when it holds this share of the allowed languages (0.5 to 1; 0.7 is a first guess)
 plugins = ""                      # extra engine modules for the worker (comma-separated)
 
 [llm]                             # the LM Studio URL stays in [lmstudio] url

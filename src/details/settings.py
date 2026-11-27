@@ -80,6 +80,11 @@ class Stt:
     vocab_hint: str    # initial_prompt used when a run asks for the vocabulary hint
     plugins: str       # comma-separated modules the worker imports to register extra engines (tests, v2.1)
     overlap_s: float = 0   # extra audio decoded on each side of a window; a segment is kept by the window holding its midpoint
+    extra_languages: str = "en,de"   # comma-separated codes a run may list as also spoken (`also`)
+    switch_min_share: float = 0.7    # a window is decoded in an `also` language only when it holds this share (0.5 to 1)
+
+    def extras(self):
+        return [c.strip() for c in self.extra_languages.split(",") if c.strip()]
 
 
 @dataclass(frozen=True)
@@ -250,6 +255,11 @@ def _v_stt(s):
         raise ValueError("stt.window_s: must be >= 1")
     if s.overlap_s < 0:
         raise ValueError("stt.overlap_s: must be >= 0")
+    codes = [c.strip() for c in s.extra_languages.split(",")] if s.extra_languages.strip() else []
+    if "" in codes or len(set(codes)) != len(codes) or "auto" in codes:
+        raise ValueError("stt.extra_languages: comma-separated language codes, no empty or repeated ones, not 'auto'")
+    if not 0.5 <= s.switch_min_share <= 1:
+        raise ValueError("stt.switch_min_share: must be between 0.5 and 1")
 
 
 def _v_llm(s):

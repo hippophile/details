@@ -17,7 +17,7 @@ async def start(e, rid, **kw):
     reg = e.models
     return await stt_runs.start_run(e.pool, e.svc, reg, e.settings, rid, kw.pop("model_id", "whisper-turbo"),
                                     language=kw.pop("language", "el"), vocab_hint=kw.pop("vocab_hint", True),
-                                    window_s=kw.pop("window_s", 1))
+                                    window_s=kw.pop("window_s", 1), also=kw.pop("also", None))
 
 
 def env(db_url, mk_settings, **kw):
@@ -284,3 +284,54 @@ def test_nan_logprob_is_stored_as_null_not_a_failed_run(db, db_url, mk_settings,
     assert db.execute("SELECT count(*), count(avg_logprob) FROM transcript_segment WHERE stt_run_id=%s",
                       (run_id,)).fetchone() == (3, 0)
     assert all(seg["avg_logprob"] is None for w in raw["windows"] for seg in w["segments"])
+
+
+def test_auto_run_stores_the_majority_language_and_raw_languages(db, db_url, mk_settings, tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path, langs="en,el,en,el,en")       # FAKE_STT_LANGS: language per window, in order
+    s = mk_settings(db_url)
+    rid = rec(db, s, seconds=5)
+
+    async def go():
+        async with env(db_url, mk_settings) as e:
+            steps_stt.bind(e.pool)
+            run_id, jid = await start(e, rid, language="auto")
+            await wait_status(e.svc, jid, "done")
+            return run_id
+    run_id = run(go)
+    status, _, text, raw, *_, lang = row(db, run_id)
+    assert status == "done" and lang == "en" and raw["languages"] == {"en": 3, "el": 2}
+    assert [w["language"] for w in raw["windows"]] == ["en", "el", "en", "el", "en"]
+
+
+def test_el_run_with_also_keeps_the_primary_and_counts_windows(db, db_url, mk_settings, tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path, langs="el,de,de")
+    s = mk_settings(db_url)
+    rid = rec(db, s, seconds=3)
+
+    async def go():
+        async with env(db_url, mk_settings) as e:
+            steps_stt.bind(e.pool)
+            run_id, jid = await start(e, rid, also=["en", "de"])
+            await wait_status(e.svc, jid, "done")
+            return run_id
+    run_id = run(go)
+    *_, raw, _w, _a, _r, lang = row(db, run_id)
+    assert lang == "el" and raw["languages"] == {"el": 1, "de": 2}
+    assert raw["windows"][1]["lang_probs"]["de"] >= 0.7
+
+
+def test_also_and_threshold_are_frozen_in_the_run_and_reach_the_engine(db, db_url, mk_settings, tmp_path, monkeypatch):
+    calls = fake_worker_env(monkeypatch, tmp_path)
+    s = mk_settings(db_url)
+    rid = rec(db, s, seconds=1)
+
+    async def go():
+        async with env(db_url, mk_settings) as e:
+            steps_stt.bind(e.pool)
+            run_id, jid = await start(e, rid, also=["de"])
+            await wait_status(e.svc, jid, "done")
+            return run_id
+    run_id = run(go)
+    assert db.execute("SELECT settings FROM stt_run WHERE id=%s", (run_id,)).fetchone()[0]["also"] == ["de"]
+    got = json.loads(calls.read_text().splitlines()[0])["settings"]
+    assert got["also"] == ["de"] and got["switch_min_share"] == 0.7

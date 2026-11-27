@@ -150,3 +150,13 @@ def test_label_has_model_wall_and_rtf():
     lab = stt_runs.run_label(3, "Whisper large-v3", "done", 9700, 7.94)
     assert "Whisper large-v3" in lab and "9.7 s" in lab and "7.9×" in lab and lab.startswith("#3")
     assert "queued" in stt_runs.run_label(1, "Whisper large-v3", "queued", None, None)
+
+
+def test_label_carries_the_requested_language_setting():
+    lab = stt_runs.run_label(3, "Whisper large-v3 turbo", "done", 132000, 7.0, "Auto")
+    assert lab == "#3 · Whisper large-v3 turbo · Auto · 2:12 · 7.0×"
+    assert stt_runs.run_label(1, "M", "queued", None, None, "Ελληνικά + en + de") == "#1 · M · Ελληνικά + en + de · queued"
+    assert stt_runs.language_setting({"language": "el", "also": ["en", "de"]}) == "Ελληνικά + en + de"
+    assert stt_runs.language_setting({"language": "auto"}) == "Auto"
+    assert stt_runs.language_setting({"language": "el"}) == "Ελληνικά"
+    assert stt_runs.language_setting({"source": "v1-transcript.txt"}) is None and stt_runs.language_setting(None) is None

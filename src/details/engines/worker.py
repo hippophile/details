@@ -1,5 +1,5 @@
 """STT worker child: `python -m details.engines.worker <spec.json>`.
-Spec: engine, model, audio_path, duration_s, window_s, overlap_s (optional, 0 = none), settings, out_dir, plugins. Appends one JSON line per finished
+Spec: engine, model, audio_path, duration_s, window_s, overlap_s (optional, 0 = none), settings (language, also, switch_min_share, ...), out_dir, plugins. Appends one JSON line per finished
 window to <out_dir>/segments.jsonl (flush + fsync), skips windows already there on resume, then writes
 worker.done.json (NOT done.json: that name is the runner's step marker). With overlap_s a window is decoded
 over [a - overlap, b + overlap] (clipped to the audio) and keeps the segments whose midpoint lies in [a, b)
@@ -63,6 +63,7 @@ def main(argv):
                 if ov:
                     segs = own_segments(segs, a, b, i == len(plan) - 1)
                 rec = {"idx": i, "start_s": a, "end_s": b, "language": getattr(eng, "language", None),
+                       "lang_probs": getattr(eng, "lang_probs", None),
                        "segments": [s.to_dict() for s in segs]}
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 f.flush()
