@@ -27,5 +27,11 @@
 - [x] 3.1 The two real runs in Verification, both models; results written into the proposal.
 - [ ] 3.2 Screenshot of the Brief tab for each recording.
 
+## 3b. Code enforcement after the real runs
+- [x] 3b.1 Red tests for the three rules (lesson empties lists + counts; unknown name nulled, spoken name kept,
+      labelled-run name kept; disagreement with 1 found position dropped).
+- [x] 3b.2 Implement in the pipeline (single pass and after merge). Green; `make test` once.
+- [x] 3b.3 Re-process the three saved briefs (no model call); report before/after.
+
 ## 4. Close
 - [ ] 4.1 validate, tick, archive, commit.

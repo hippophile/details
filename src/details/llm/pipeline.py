@@ -260,10 +260,43 @@ def _apply_link(content, data):
         xs[e["id"]]["settled_by"] = e["settled_by"]
 
 
-async def _brief_finish(chat, content, timed, llm, on_event, names):
+def _enforce_brief(content, full):
+    """Code enforces what the prompt only asks (counts are written next to the content, never silently):
+    not a meeting -> no decisions/disagreements/action items; a who/owner not occurring in the transcript (a labelled
+    run has its speaker names in it) -> null; a disagreement keeps only positions whose quote was found, fewer than 2 -> gone."""
+    c, hay = copy.deepcopy(content), norm(full)
+    if c["kind_of_recording"] != "meeting":
+        gone = {k: len(c[k]) for k in ("decisions", "disagreements", "action_items")}
+        for k in gone:
+            c[k] = []
+        if sum(gone.values()):
+            c["dropped_not_meeting"] = gone
+    dropped, kept = 0, []
+    for x in c["disagreements"]:
+        x["positions"] = [p for p in x["positions"] if p.get("verified") is True]
+        if len(x["positions"]) >= 2:
+            kept.append(x)
+        else:
+            dropped += 1
+    c["disagreements"] = kept
+    if dropped:
+        c["dropped_unsupported"] = dropped
+    cleared = 0
+    for holder in [p for x in c["disagreements"] for p in x["positions"]] + c["action_items"]:
+        key = "who" if "who" in holder else "owner"
+        n = holder.get(key)
+        if n and norm(n) not in hay:
+            holder[key] = None
+            cleared += 1
+    if cleared:
+        c["names_cleared"] = cleared
+    return c
+
+
+async def _brief_finish(chat, content, timed, llm, on_event, names, full=""):
     """-> (stored brief content, params for the run, link Attempts). Never raises LLMError: a failed link keeps the
     brief with links "failed". StreamCancelled (a cancel) propagates."""
-    c, dec_t, dis_t = _assemble_brief(content, timed)
+    c, dec_t, dis_t = _assemble_brief(_enforce_brief(content, full), timed)
     if "known_scripts" in names:
         warn = list(dict.fromkeys(p for p, _ in checks.script_issues(c)))
         if warn:
@@ -347,7 +380,7 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
         content, v, u = (None, 0, 0) if not last.valid else quotes.verify(last.content, full)
         extra = {}
         if kind == "brief" and content is not None:
-            content, extra, link = await _brief_finish(chat, content, timed_segments, llm, on_event, names)
+            content, extra, link = await _brief_finish(chat, content, timed_segments, llm, on_event, names, full)
             for f in ("tokens_in", "tokens_out", "wall_ms"):       # the link call is folded into the kept attempt
                 setattr(last, f, getattr(last, f) + sum(getattr(a, f) for a in link))
         return KindResult(attempts, content, "single", 1, 0, v, u, _sum(attempts), extra)
@@ -401,7 +434,7 @@ async def generate_kind(chat, *, settings, kind, template, model, context, segme
     content, v, u = quotes.verify(merged, full)
     finish, extra = calls[-1].finish_reason if calls else None, {}
     if kind == "brief":
-        content, extra, link = await _brief_finish(chat, content, timed_segments, llm, on_event, names)
+        content, extra, link = await _brief_finish(chat, content, timed_segments, llm, on_event, names, full)
         calls.extend(link)
     agg = Attempt(first_prompt, json.dumps(merged, ensure_ascii=False), 0, 0, 0, finish,
                   {"chunks": len(chunks), "cache_hits": hits, "calls": len(calls)})

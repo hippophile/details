@@ -158,3 +158,11 @@ test("failed links and foreign-alphabet warnings are said on the page, and every
   assert.deepEqual(v.notes, ["Could not work out which decisions replaced earlier ones.", "Some text is in an unexpected alphabet."]);
   assert.equal(sec(v, "decided").items.length, 2);
 });
+
+test("a brief that had items dropped says so in one line", () => {
+  const v = briefView({ ...BRIEF, dropped_not_meeting: { decisions: 2, disagreements: 1, action_items: 1 } });
+  assert.deepEqual(v.notes, ["Not a meeting: 4 items the model proposed were left out."]);
+  assert.deepEqual(briefView({ ...BRIEF, dropped_not_meeting: { decisions: 1, disagreements: 0, action_items: 0 } }).notes,
+    ["Not a meeting: 1 item the model proposed was left out."]);
+  assert.deepEqual(briefView({ ...BRIEF, dropped_not_meeting: { decisions: 0, disagreements: 0, action_items: 0 } }).notes, []);
+});

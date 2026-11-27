@@ -68,6 +68,8 @@
       { key: "questions", heading: "Open questions", empty: "No open questions.", items: questions }];
     if (chapters.length) sections.push({ key: "chapters", heading: "Chapters", empty: null, items: chapters });
     const notes = [];
+    const dn = c.dropped_not_meeting, nd = dn ? dn.decisions + dn.disagreements + dn.action_items : 0;
+    if (nd) notes.push(`Not a meeting: ${nd} ${nd === 1 ? "item the model proposed was" : "items the model proposed were"} left out.`);
     if (c.links === "failed") notes.push("Could not work out which decisions replaced earlier ones.");
     if ((c.script_warnings || []).length) notes.push("Some text is in an unexpected alphabet.");
     return { title: "BRIEF · " + c.kind_of_recording, notes, summary: c.summary, sections };

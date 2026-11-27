@@ -213,6 +213,18 @@
         "additionalProperties": false
       }
     },
+    "dropped_not_meeting": {
+      "type": "object",
+      "properties": {
+        "decisions": {"type": "integer", "minimum": 0},
+        "disagreements": {"type": "integer", "minimum": 0},
+        "action_items": {"type": "integer", "minimum": 0}
+      },
+      "required": ["decisions", "disagreements", "action_items"],
+      "additionalProperties": false
+    },
+    "names_cleared": {"type": "integer", "minimum": 0},
+    "dropped_unsupported": {"type": "integer", "minimum": 0},
     "links": {
       "enum": [
         "ok",

@@ -178,3 +178,24 @@ What the real runs show (honest):
 - Markdown format chosen: `- decision` + quote line + nested `- changed from: earlier [mm:ss]` (a chain nests deeper); disagreement
   `- topic (still open)` or `(settled by: decision text)` with one nested line per position; empty chapters read "No chapters."; a failed
   link or script warnings add one italic line (the export would otherwise drop them silently).
+
+## Correction after the real runs (orchestrator, 2026-11-27): enforce in code what the model was only asked
+Both models labelled the German drill `lesson` and still returned decisions / a disagreement / action items; Gemma
+wrote `who: "Speaker 1"` with no speaker labels in the input. The prompt rules are not enough, so code enforces them
+after extraction (before ids and link):
+1. `kind_of_recording != "meeting"` → `decisions`, `disagreements`, `action_items` are emptied; their counts go to
+   `dropped_not_meeting: {decisions: n, disagreements: n, action_items: n}` (shown in Inspect, one line on the page:
+   "Not a meeting: N items the model proposed were left out.").
+2. `who` / `owner` are kept only if the name occurs in the transcript text (`quotes.norm` containment) or is one of
+   the speaker names of a labelled run; otherwise set to null and counted in `names_cleared`.
+3. A disagreement keeps only positions whose quote was found; with fewer than 2 found positions it is dropped and
+   counted in `dropped_unsupported`. (Decisions and items keep the existing rule: kept, greyed when not found.)
+Re-run proof: the two `manos-filipGerman` briefs re-processed from their saved model replies (no new model call)
+must have 0 decisions / disagreements / action items; the giannis brief re-processed must lose only the
+`Speaker 1/2` names and unsupported positions — list what changed.
+
+### Task 3b: re-processed from the saved briefs (no model call; `scratchpad/brief-proof/reprocess.py`)
+Input is the saved stored brief (not the raw reply, which the proof script did not keep); `_enforce_brief` is idempotent on it.
+- manos Gemma: disagreements 1 → 0 (`dropped_not_meeting` 0/1/0); decisions and action items 0 as before.
+- manos Krikri: decisions 2 → 0, action items 1 → 0 (`dropped_not_meeting` 2/0/1). Open questions (2) are not covered by rule 1 and stay.
+- giannis Gemma: disagreements 2 → 1 (`dropped_unsupported` 1: the `Speaker 1/2` one, whose second quote was not found, so the names left with it, `names_cleared` 0). The rest unchanged: 9 decisions, 5 action items, 5 questions, 19 chapters.

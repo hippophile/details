@@ -367,3 +367,69 @@ def test_merge_brief_concatenates_dedupes_and_votes_on_the_kind():
     assert [x["title"] for x in m["chapters"]] == ["Intro", "Plan", "Plan 2"]                # consecutive repeats dropped
     tie = pipeline.merge("brief", [c("lesson", [], "t", "s", []), c("meeting", [], "t", "s", [])])
     assert tie["kind_of_recording"] == "lesson"                                              # ties: first
+
+
+# ---- brief: code enforces what the prompt only asked (names, not-a-meeting, unsupported positions) -----------------
+
+def pos(who, stance, quote):
+    return {"who": who, "stance": stance, "quote": quote}
+
+
+def test_a_lesson_loses_decisions_disagreements_and_action_items_and_the_counts_are_kept(mk_settings):
+    c = brief3()
+    c["kind_of_recording"] = "lesson"
+    chat = ScriptedChat(c)
+    r = genb(chat, mk_settings)
+    got = r.content
+    assert (got["decisions"], got["disagreements"], got["action_items"]) == ([], [], [])
+    assert got["dropped_not_meeting"] == {"decisions": 4, "disagreements": 2, "action_items": 1}
+    assert got["links"] == "skipped" and len(chat.calls) == 1               # nothing left to link
+    assert len(got["open_questions"]) == 1 and schemas.validate("brief", got, stored=True) == []
+
+
+def test_a_meeting_has_no_not_meeting_counts(mk_settings):
+    assert "dropped_not_meeting" not in genb(ScriptedChat(good("brief")), mk_settings).content
+
+
+def test_names_are_kept_only_when_spoken_in_the_transcript(mk_settings):
+    c = good("brief")                                                         # owner "Νίκος" is in SEGS
+    c["action_items"].append({"text": "x", "owner": "Γιώργος", "due": None, "done": False, "quote": "Θα κάνουμε deploy"})
+    c["disagreements"] = [{"topic": "t", "positions": [pos("Speaker 1", "a", "Θα κάνουμε deploy"),
+                                                       pos("Νίκος", "b", "ετοιμάσει το documentation")]}]
+    got = genb(ScriptedChat(c), mk_settings).content
+    assert [a["owner"] for a in got["action_items"]] == ["Νίκος", None]
+    assert [p["who"] for p in got["disagreements"][0]["positions"]] == [None, "Νίκος"]
+    assert got["names_cleared"] == 2
+
+
+def test_a_speaker_name_of_a_labelled_run_is_kept(mk_settings):
+    segs = ["Αλέξης: Θα κάνουμε deploy στις 12 Νοεμβρίου.", "Μαρία: Συμφωνώ, ετοιμάζω το documentation."]
+    c = good("brief")
+    c["action_items"] = [{"text": "x", "owner": "Μαρία", "due": None, "done": False, "quote": "ετοιμάζω το documentation"}]
+    got = genb(ScriptedChat(c), mk_settings, segments=segs, timed=None).content
+    assert got["action_items"][0]["owner"] == "Μαρία" and "names_cleared" not in got
+
+
+def test_a_disagreement_keeps_only_positions_whose_quote_was_found(mk_settings):
+    c = good("brief")
+    c["disagreements"] = [
+        {"topic": "one side only", "positions": [pos(None, "a", "Θα κάνουμε deploy"), pos(None, "b", "δεν ειπώθηκε ποτέ")]},
+        {"topic": "three", "positions": [pos(None, "a", "Θα κάνουμε deploy"), pos(None, "b", "δεν ειπώθηκε ποτέ"),
+                                         pos(None, "c", "ποιο μοντέλο")]}]
+    got = genb(ScriptedChat(c, LINK_NONE), mk_settings).content
+    assert [x["topic"] for x in got["disagreements"]] == ["three"]
+    assert [p["stance"] for p in got["disagreements"][0]["positions"]] == ["a", "c"]
+    assert got["dropped_unsupported"] == 1 and schemas.validate("brief", got, stored=True) == []
+
+
+def test_enforcement_runs_once_on_the_merged_brief(mk_settings, tmp_path):
+    def reply(call):
+        if call["kind"] == "reduce":
+            return {"text": "σύνοψη"}
+        c = good("brief", kind_of_recording="lesson")
+        c["decisions"] = [{"text": "Deploy", "quote": "θα κάνουμε deploy στις 1 Νοεμβρίου"}]
+        return c
+    chat = ScriptedChat(default=reply)
+    r = genb(chat, mk_settings, segments=LONG, data_dir=tmp_path, **ENV)
+    assert r.content["decisions"] == [] and r.content["dropped_not_meeting"]["decisions"] == 1
+    assert [c["kind"] for c in chat.calls] == ["brief"] * 3 + ["reduce"]

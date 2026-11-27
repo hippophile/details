@@ -7,7 +7,8 @@ from jsonschema import Draft202012Validator
 from ..settings import REPO_ROOT
 
 KINDS = ("brief", "debrief", "notes", "checklist", "tags")   # diagram and speakers are v2.1; brief is the tab shown first
-CODE_FIELDS = ("verified", "id", "status", "replaces", "replaced_by", "settled_by", "links", "script_warnings")
+CODE_FIELDS = ("verified", "id", "status", "replaces", "replaced_by", "settled_by", "links", "script_warnings",
+               "dropped_not_meeting", "names_cleared", "dropped_unsupported")
 SCHEMAS_DIR = REPO_ROOT / "schemas"
 
 
