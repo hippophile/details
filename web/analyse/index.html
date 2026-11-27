@@ -29,19 +29,6 @@
       <audio id="player" controls preload="metadata"></audio>
     </div>
 
-    <div class="card" id="newRun">
-      <h2>New run</h2>
-      <div class="row">
-        <div><label for="model">Speech model</label><br><select id="model"></select></div>
-        <div><label for="lang">Language</label><br>
-          <select id="lang"><option value="el">Ελληνικά</option><option value="auto">Auto</option></select></div>
-        <div id="alsoWrap" hidden><label>Also spoken</label><br><span id="also"></span></div>
-        <label class="check"><input type="checkbox" id="hint"> Tech vocab hint</label>
-        <button class="btn" id="start" type="button">Start</button>
-      </div>
-      <div class="meta" id="reason" role="status" aria-live="polite"></div>
-    </div>
-
     <div class="card" id="progress" hidden>
       <h2>Running</h2>
       <div class="row"><div id="stage" aria-live="polite">Waiting</div><div id="pct" class="num">0%</div>
@@ -70,6 +57,56 @@
       <div class="meta">You can close this page: the run keeps going and shows up here when you come back.</div>
     </div>
 
+    <div id="liveBox" class="card livebox" hidden>
+      <div class="live-top"><span id="liveTitle" class="live-title">The model is writing</span><span id="liveHead" class="meta" aria-live="off"></span>
+        <span id="liveNote" class="meta"></span></div>
+      <pre id="liveText" tabindex="0" aria-label="Reply as it is written (draft, not yet checked)"></pre>
+    </div>
+
+    <div id="aiInsightsHost"></div>
+
+    <div class="card" id="aiResults" hidden>
+      <h2>Write-up</h2>
+      <div class="tabs" id="aiTabs" role="tablist" aria-label="Outputs"></div>
+      <div id="aiPanel" role="tabpanel"></div>
+      <div class="meta" id="aiFooter"></div>
+      <div class="row actions">
+        <button class="btn sm ghost" id="aiCopy" type="button">Copy Markdown</button>
+        <button class="btn sm ghost" id="aiDownload" type="button">Download .md</button>
+        <button class="btn sm ghost" id="aiCopyAll" type="button">Copy all</button>
+        <button class="btn sm ghost" id="aiDownloadAll" type="button">Download all</button>
+        <button class="btn sm ghost" id="aiInspect" type="button">Inspect</button>
+        <button class="btn sm ghost" id="aiLog" type="button">Pipeline and log</button>
+      </div>
+      <div class="meta" id="aiMsg" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="card" id="transcriptCard">
+      <h2 id="transcriptTitle">Transcript</h2>
+      <div class="view-toggle" id="viewToggle" role="group" aria-label="Transcript view">
+        <button class="btn sm ghost" id="viewParas" type="button" aria-pressed="true">Paragraphs</button>
+        <button class="btn sm ghost" id="viewLines" type="button" aria-pressed="false">Lines</button>
+      </div>
+      <div class="row">
+        <button class="btn sm" id="copyTranscript" type="button">Copy transcript</button>
+        <label class="meta"><input type="checkbox" id="copyStamps"> Timestamps</label>
+      </div>
+      <div id="transcript" aria-live="polite"><div class="meta">Select a run to read its transcript.</div></div>
+    </div>
+
+    <div class="card" id="newRun">
+      <h2>New run</h2>
+      <div class="row">
+        <div><label for="model">Speech model</label><br><select id="model"></select></div>
+        <div><label for="lang">Language</label><br>
+          <select id="lang"><option value="el">Ελληνικά</option><option value="auto">Auto</option></select></div>
+        <div id="alsoWrap" hidden><label>Also spoken</label><br><span id="also"></span></div>
+        <label class="check"><input type="checkbox" id="hint"> Tech vocab hint</label>
+        <button class="btn" id="start" type="button">Start</button>
+      </div>
+      <div class="meta" id="reason" role="status" aria-live="polite"></div>
+    </div>
+
     <div class="card" id="aiSlot">
       <h2>AI model</h2>
       <div class="row">
@@ -95,31 +132,7 @@
       <div class="meta" id="aiReason" role="status" aria-live="polite"></div>
     </div>
 
-    <div id="liveBox" class="card livebox" hidden>
-      <div class="live-top"><span id="liveTitle" class="live-title">The model is writing</span><span id="liveHead" class="meta" aria-live="off"></span>
-        <span id="liveNote" class="meta"></span></div>
-      <pre id="liveText" tabindex="0" aria-label="Reply as it is written (draft, not yet checked)"></pre>
-    </div>
-
-    <div id="aiInsightsHost"></div>
-
-    <div class="card" id="aiResults" hidden>
-      <h2>Write-up</h2>
-      <div class="tabs" id="aiTabs" role="tablist" aria-label="Outputs"></div>
-      <div id="aiPanel" role="tabpanel"></div>
-      <div class="meta" id="aiFooter"></div>
-      <div class="row actions">
-        <button class="btn sm ghost" id="aiCopy" type="button">Copy Markdown</button>
-        <button class="btn sm ghost" id="aiDownload" type="button">Download .md</button>
-        <button class="btn sm ghost" id="aiCopyAll" type="button">Copy all</button>
-        <button class="btn sm ghost" id="aiDownloadAll" type="button">Download all</button>
-        <button class="btn sm ghost" id="aiInspect" type="button">Inspect</button>
-        <button class="btn sm ghost" id="aiLog" type="button">Pipeline and log</button>
-      </div>
-      <div class="meta" id="aiMsg" role="status" aria-live="polite"></div>
-    </div>
-
-    <div class="card">
+    <div class="card" id="runsCard">
       <h2>Runs</h2>
       <ul id="runs" class="runs" aria-label="Runs"></ul>
       <div class="meta" id="runsEmpty" hidden>No runs yet. Pick a model above and press Start.</div>
@@ -166,6 +179,7 @@
       </div>
       <div class="meta" id="spkGpuHint">Live assist on the Record page waits while speakers are being detected.</div>
       <div class="meta" id="spkReason" role="status" aria-live="polite"></div>
+      <details id="spkSetup" hidden><summary>How to set it up</summary><div class="meta" id="spkSetupText"></div></details>
       <div class="meta" id="spkStatus" role="status" aria-live="polite"></div>
       <div id="spkEmpty" class="meta" hidden></div>
       <div id="spkBars" aria-label="Talk time per speaker"></div>
@@ -174,15 +188,6 @@
       <div class="meta" id="spkWarn1" hidden>Speaker labels are a guess. Check before sharing.</div>
       <div class="meta" id="spkWarn2" hidden>Each transcript line gets one speaker, so talk-time percentages and the labelled text can differ.</div>
       <div id="spkTurns" aria-label="Turns"></div>
-    </div>
-
-    <div class="card" id="transcriptCard">
-      <h2 id="transcriptTitle">Transcript</h2>
-      <div class="row">
-        <button class="btn sm" id="copyTranscript" type="button">Copy transcript</button>
-        <label class="meta"><input type="checkbox" id="copyStamps"> Timestamps</label>
-      </div>
-      <div id="transcript" aria-live="polite"><div class="meta">Select a run to read its transcript.</div></div>
     </div>
   </div>
   <div id="status" class="meta" role="status" aria-live="polite"></div>

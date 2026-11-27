@@ -76,3 +76,11 @@ def test_node_speakers_unit_tests():
     r = subprocess.run([node, "--test", str(REPO_ROOT / "tests" / "js" / "speakers.test.mjs")],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-500:]
+
+
+def test_setup_steps_sit_in_a_closed_disclosure_and_spkreason_stays_the_one_line_notice(mk_settings):
+    html, js = fetch(mk_settings, "/analyse", "/analyse/speakers.js")
+    text = re.sub(r"\s+", " ", html)
+    assert 'id="spkSetup"' in text and "<summary>How to set it up</summary>" in text and 'id="spkSetupText"' in text
+    assert re.search(r'<details id="spkSetup"(?![^>]*\bopen)', text)
+    assert 'id="spkReason"' in text and "setupNotice" in js and "spkSetupText" in js

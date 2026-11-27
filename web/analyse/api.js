@@ -49,7 +49,22 @@
     const stamps = !!(opts && opts.timestamps);
     return segs.map((s) => (stamps ? `[${fmtClock(s.start_ms)}] ` : "") + (s.speaker_name ? `${s.speaker_name}: ` : "") + String(s.text).trim()).join("\n");
   }
-  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, startBody, freshRun, transcriptText };
+  // Transcript paragraphs: consecutive segments, new paragraph on a speaker change, a silence over gapMs, a sentence end once the
+  // paragraph is minMs long, or when adding the segment would pass maxMs. Each: {start_ms, end_ms, speaker, segs}.
+  function paragraphs(segs, opts) {
+    const o = { gapMs: 1500, minMs: 8000, maxMs: 45000, ...(opts || {}) };
+    const out = [];
+    let prev = null, cur = null;
+    for (const s of segs || []) {
+      if (cur && (s.speaker !== cur.speaker || s.start_ms - prev.end_ms > o.gapMs ||
+          (prev.end_ms - cur.start_ms >= o.minMs && /[.;!?…]\s*$/.test(String(prev.text))) || s.end_ms - cur.start_ms > o.maxMs)) cur = null;
+      if (!cur) { cur = { start_ms: s.start_ms, end_ms: s.end_ms, speaker: s.speaker, segs: [] }; out.push(cur); }
+      cur.segs.push(s); cur.end_ms = s.end_ms; prev = s;
+    }
+    return out;
+  }
+  function transcriptView(stored) { return stored === "lines" ? "lines" : "paragraphs"; }
+  const out = { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, startBody, freshRun, transcriptText, paragraphs, transcriptView };
   if (typeof module !== "undefined" && module.exports) module.exports = out;
   else window.AnalyseApi = out;
 })();

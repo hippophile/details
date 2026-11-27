@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const { fmtPct, fmtTalk, barRows, groupTurns, turnText, chipText, colorClass, timelineBlocks, unavailableText,
-  nameToSend, emptyText } = createRequire(import.meta.url)("../../web/analyse/speakers.js");
+  nameToSend, emptyText, setupNotice } = createRequire(import.meta.url)("../../web/analyse/speakers.js");
 
 const SP = [{ speaker: 1, display: "Speaker 1", talk_ms: 7000, share_pct: 70.0, turns: 2 },
   { speaker: 2, display: "Νίκος", talk_ms: 3000, share_pct: 30.0, turns: 1 }];
@@ -80,4 +80,11 @@ test("the empty-card text says why there are no bars", () => {
   assert.equal(emptyText({ available: true, run: null }), "No speaker run yet. Press Detect speakers.");
   assert.equal(emptyText({ available: true, run: { status: "done", speakers: SP } }), "");
   assert.equal(emptyText({ available: true, run: null, running: true }), "Speakers are being detected.");
+});
+
+test("setup notice: one line plus the steps; nothing when the model is installed", () => {
+  const m = { label: "Speaker model", installed: false, unavailable_reason: "not downloaded", hint: "run `make diar-model`" };
+  assert.deepEqual(setupNotice(m), { notice: "Speaker detection is not set up.", steps: unavailableText(m) });
+  assert.deepEqual(setupNotice(undefined), { notice: "Speaker detection is not set up.", steps: "No speaker model is configured." });
+  assert.deepEqual(setupNotice({ label: "X", installed: true }), { notice: "", steps: "" });
 });

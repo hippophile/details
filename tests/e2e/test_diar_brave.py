@@ -57,6 +57,7 @@ def test_bars_click_to_seek_chips_rename_and_reload(db, db_url, mk_settings, tmp
     shots = shots_dir(tmp_path)
     try:
         def drive(page):
+            page.add_init_script("localStorage.setItem('analyse.transcriptView', 'lines')")   # the chips are checked per line
             page.goto(f"{base}/analyse?rec={rid}")
             page.wait_for_selector("#spkBars .spk-row", timeout=20000)
             rows = page.locator("#spkBars .spk-row")
@@ -117,7 +118,7 @@ def test_disabled_state_shows_reason_and_hint_and_no_bars(db, db_url, mk_setting
             page.goto(f"{base}/analyse?rec={rid}")
             page.wait_for_function("document.getElementById('spkReason').innerText.length > 0", timeout=20000)
             page.screenshot(path=str(shots / "diar-disabled.png"), full_page=True)
-            return (page.is_disabled("#spkStart"), page.inner_text("#spkReason"), page.locator("#spkBars .spk-row").count(),
+            return (page.is_disabled("#spkStart"), page.inner_text("#spkReason") + " " + page.text_content("#spkSetupText"), page.locator("#spkBars .spk-row").count(),
                     page.inner_text("#spkEmpty"), page.is_visible("#spkCard"))
         disabled, reason, bars, empty, shown = browse(None_wav(tmp_path), drive)
     finally:
@@ -165,6 +166,7 @@ def test_dark_mode_keeps_names_and_colours_readable(db, db_url, mk_settings, tmp
     shots = shots_dir(tmp_path)
     try:
         def drive(page):
+            page.add_init_script("localStorage.setItem('analyse.transcriptView', 'lines')")   # the chips are checked per line
             page.goto(f"{base}/analyse?rec={rid}")
             page.wait_for_selector("#spkBars .spk-row", timeout=20000)
             page.wait_for_selector("#transcript .seg .spk-chip", timeout=20000)

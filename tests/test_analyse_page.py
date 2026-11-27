@@ -47,3 +47,24 @@ def test_js_uses_models_api_sse_poll_and_seek_without_innerhtml(mk_settings):
                    "/api/recordings/", "/stt-runs", "unavailable_reason", "confirm", "textContent"):
         assert needle in js, needle
     assert "innerHTML" not in js
+
+
+def test_cards_are_in_review_first_order(mk_settings):
+    html, = fetch(mk_settings, "/analyse")
+    order = ("recHeader", "progress", "liveBox", "aiInsightsHost", "aiResults", "transcriptCard", "newRun", "aiSlot",
+             "runsCard", "compareView", "spkCard")
+    pos = [html.index(f'id="{i}"') for i in order]
+    assert pos == sorted(pos), dict(zip(order, pos))
+
+
+def test_transcript_toggle_defaults_to_paragraphs_and_both_views_exist(mk_settings):
+    html, js, css = fetch(mk_settings, "/analyse", "/analyse/analyse.js", "/analyse/analyse.css")
+    assert 'id="viewParas"' in html and 'id="viewLines"' in html and "Paragraphs" in html and "Lines" in html
+    assert 'id="viewParas" type="button" aria-pressed="true"' in html and 'id="viewLines" type="button" aria-pressed="false"' in html
+    assert "localStorage" in js and "transcriptView" in js and "paragraphs(" in js and 'className: "seg"' in js
+    assert ".para .s.on" in css and ".para" in css
+
+
+def test_new_run_and_ai_model_stay_above_the_transcript_when_no_run_is_done(mk_settings):
+    js, = fetch(mk_settings, "/analyse/analyse.js")
+    assert 'transcriptCard").before(' in js and "pickRun(runs)" in js

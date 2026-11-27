@@ -1,6 +1,6 @@
 // Analyse page: recording header + player, New run, progress (SSE with polling fallback), runs list, transcript.
 (function () {
-  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, startBody, freshRun, transcriptText } = window.AnalyseApi;
+  const { fmtClock, fmtWall, seekTo, isActivateKey, api, el, pickRun, startBody, freshRun, transcriptText, paragraphs, transcriptView } = window.AnalyseApi;
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
   const player = $("player"), modelSel = $("model"), startBtn = $("start"), reason = $("reason");
@@ -161,7 +161,7 @@
 
   // ---- transcript ---------------------------------------------------------------------------------------
   function clearTranscript() {
-    selected = null; segEls = []; copyable = null;
+    selected = null; segEls = []; copyable = null; shown = null;
     $("transcript").replaceChildren(el("div", { className: "meta" }, "Select a run to read its transcript."));
     $("transcriptTitle").textContent = "Transcript";
   }
@@ -189,7 +189,7 @@
     await loadRuns_mark(r);
     const box = $("transcript");
     box.replaceChildren();
-    copyable = null;
+    copyable = null; shown = null;
     $("transcriptTitle").textContent = "Transcript: " + r.label;
     if (r.status !== "done") { box.appendChild(el("div", { className: "meta" }, r.error || `This run is ${r.status}.`)); return; }
     const dr = window.Speakers && window.Speakers.pickedId();         // speaker run picked: rows get a speaker chip
@@ -207,7 +207,51 @@
       copyable = { text: full.text || "" };
       return;
     }
-    for (const s of segs) {
+    shown = segs;
+    draw();
+  }
+  // Transcript view: Paragraphs (default) or Lines, kept in localStorage. Both fill segEls with the elements that seek and highlight.
+  let shown = null;
+  const viewKey = "analyse.transcriptView";
+  let view = "paragraphs";
+  try { view = transcriptView(localStorage.getItem(viewKey)); } catch (e) { /* storage blocked: default */ }
+  function syncToggle() {
+    $("viewParas").setAttribute("aria-pressed", String(view === "paragraphs"));
+    $("viewLines").setAttribute("aria-pressed", String(view === "lines"));
+  }
+  function setView(v) {
+    view = v; syncToggle();
+    try { localStorage.setItem(viewKey, v); } catch (e) { /* storage blocked: not remembered */ }
+    if (shown) draw();
+  }
+  $("viewParas").onclick = () => setView("paragraphs");
+  $("viewLines").onclick = () => setView("lines");
+  syncToggle();
+  function draw() {
+    const box = $("transcript");
+    box.replaceChildren();
+    segEls = [];
+    if (view === "paragraphs") {
+      for (const p of paragraphs(shown)) {
+        const row = el("div", { className: "para" });
+        row.appendChild(el("span", { className: "t" }, `[${fmtClock(p.start_ms)}]`));
+        if (p.segs[0].speaker_name !== undefined && window.Speakers) row.appendChild(window.Speakers.chip(p.segs[0]));
+        const x = el("span", { className: "x" });
+        p.segs.forEach((s, i) => {
+          const sp = el("span", { className: "s", tabIndex: 0 }, (i ? " " : "") + s.text);
+          sp.setAttribute("role", "button");
+          sp.dataset.start = s.start_ms; sp.dataset.end = s.end_ms;
+          sp.onclick = () => seekTo(player, s.start_ms);
+          sp.onkeydown = (ev) => { if (isActivateKey(ev)) { ev.preventDefault(); seekTo(player, s.start_ms); } };
+          x.appendChild(sp);
+          segEls.push(sp);
+        });
+        row.appendChild(x);
+        box.appendChild(row);
+      }
+      return;
+    }
+    for (const s of shown) {
       const row = el("div", { className: "seg", tabIndex: 0 });
       row.setAttribute("role", "button");
       row.appendChild(el("span", { className: "t" }, `[${fmtClock(s.start_ms)}]`));
@@ -245,6 +289,7 @@
     try { await loadModels(); } catch (e) { reason.textContent = "Could not load models: " + e.message; startBtn.disabled = true; }
     try { await loadRuns(); } catch (e) { say("Could not load runs: " + e.message, true); }
     const done = pickRun(runs);
+    if (!done) $("transcriptCard").before($("newRun"), $("aiSlot"));     // nothing to review yet: starting a run comes first
     if (done && !watching) select(done);
   }
   boot();

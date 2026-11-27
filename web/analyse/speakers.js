@@ -38,6 +38,7 @@
     if (m.installed) return "";
     return `${m.label} is not available: ${m.unavailable_reason || "unknown reason"}${m.hint ? " (" + m.hint + ")" : ""}`;
   }
+  function setupNotice(m) { return m && m.installed ? { notice: "", steps: "" } : { notice: "Speaker detection is not set up.", steps: unavailableText(m) }; }
   function nameToSend(text) { const t = (text || "").trim(); return t ? t : null; }
   function emptyText(st) {
     if (st.running) return "Speakers are being detected.";
@@ -47,7 +48,7 @@
     return "";
   }
 
-  const out = { fmtPct, fmtTalk, colorClass, barRows, groupTurns, turnText, chipText, timelineBlocks, unavailableText, nameToSend, emptyText };
+  const out = { fmtPct, fmtTalk, colorClass, barRows, groupTurns, turnText, chipText, timelineBlocks, unavailableText, nameToSend, emptyText, setupNotice };
   if (typeof module !== "undefined" && module.exports) { module.exports = out; return; }
 
   // ---- the card -----------------------------------------------------------------------------------------
@@ -68,7 +69,10 @@
 
   function syncStart() {
     $("spkStart").disabled = !available() || busy;
-    $("spkReason").textContent = available() ? "" : unavailableText(entry);
+    const n = setupNotice(entry);
+    $("spkReason").textContent = n.notice;
+    $("spkSetupText").textContent = n.steps;
+    $("spkSetup").hidden = !n.steps;
   }
   function syncLabelSelect() {
     const sel = $("aiLabels"), keep = sel.value;
