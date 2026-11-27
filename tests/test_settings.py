@@ -52,6 +52,8 @@ max_tokens_debrief = 2000
 max_tokens_notes = 2000
 max_tokens_checklist = 1500
 max_tokens_tags = 400
+max_tokens_brief = 3000
+max_tokens_brief_link = 800
 stream = true
 stream_idle_timeout_s = 60
 """
@@ -167,6 +169,11 @@ def test_llm_section_defaults_env_override_and_validation(cfg):
     s = load(cfg)
     assert s.llm.single_pass_max_tokens == 20000 and s.llm.chars_per_token == 2.5
     assert s.llm.max_tokens("tags") == 400
+    assert s.llm.max_tokens("brief") == 3000 and s.llm.max_tokens("brief_link") == 800
+    assert load(cfg, {"DETAILS_LLM_MAX_TOKENS_BRIEF": "4000"}).llm.max_tokens_brief == 4000
+    for k in ("MAX_TOKENS_BRIEF", "MAX_TOKENS_BRIEF_LINK"):
+        with pytest.raises(SettingsError, match=rf"llm\.{k.lower()}"):
+            load(cfg, {f"DETAILS_LLM_{k}": "0"})
     assert load(cfg, {"DETAILS_LLM_CHUNK_TOKENS": "1234"}).llm.chunk_tokens == 1234
     with pytest.raises(SettingsError, match=r"llm\.chars_per_token"):
         load(cfg, {"DETAILS_LLM_CHARS_PER_TOKEN": "0"})
@@ -193,3 +200,8 @@ def test_llm_stream_settings_defaults_env_and_validation(cfg):
         load_settings(cfg, env={"DETAILS_LLM_STREAM_IDLE_TIMEOUT_S": "0"}, dotenv_path=None)
     with pytest.raises(SettingsError, match=r"llm\.stream"):
         load_settings(cfg, env={"DETAILS_LLM_STREAM": "maybe"}, dotenv_path=None)
+
+
+def test_shipped_config_has_the_brief_limits():
+    s = load_settings(env={}, dotenv_path=None)
+    assert (s.llm.max_tokens_brief, s.llm.max_tokens_brief_link) == (3000, 800)

@@ -41,14 +41,14 @@ def test_streaming_is_the_default_and_all_kinds_match_the_plain_structure(db, db
             await wait_status(e.svc, jid, "done")
             return gid, jid, log_lines(e, jid)
     gid, jid, lines = go(body)
-    assert all(r.get("stream") is True for r in fake.requests) and len(fake.requests) == 4
+    assert all(r.get("stream") is True for r in fake.requests) and len(fake.requests) == len(KINDS)
     rows = runs(db, gid)
     assert [(r[0], r[1], r[2]) for r in rows] == [(k, "done", True) for k in KINDS]
     out = {r[0]: r[1] for r in db.execute("SELECT kind, content FROM output").fetchall()}
     for k in KINDS:                                              # same content as the plain path would store
         assert schemas.validate(k, out[k], stored=True) == [] and out[k]["schema_version"] == 1
     calls = [l for l in lines if l["msg"] == "LM Studio call"]
-    assert len(calls) == 4 and all(l["data"]["stream"] is True and l["data"]["ttft_ms"] is not None for l in calls)
+    assert len(calls) == len(KINDS) and all(l["data"]["stream"] is True and l["data"]["ttft_ms"] is not None for l in calls)
     assert all(l["data"].get("fallback") in (None, "") for l in calls)
     raw = rows[0][8]
     assert raw["response"]["stream"] is True and raw["text"]

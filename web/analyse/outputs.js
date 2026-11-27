@@ -43,14 +43,42 @@
   function promptsText(prompts, versions) {
     return Object.keys(prompts || {}).filter((k) => (versions[k] || []).length > 1).map((k) => `${k} v${prompts[k]}`).join(", ");
   }
-  const exported = { canStart, modelLabel, itemMeta, footer, groupLabel, pickerKinds, promptVersionsBody, promptsText, quoteLabel, countsLine, retryJob };
+  // ---- Brief: the view as plain data (the page turns it into DOM with textContent) -----------------------
+  const KINDS = ["brief", "debrief", "notes", "checklist", "tags"];
+  function tabKinds(have) { return KINDS.filter((k) => have.includes(k)); }
+  // item = { text, meta, quote (an object with quote/at_ms/verified, or null), jump (ms or null), unverified, sub: [] }
+  function briefView(c) {
+    const decisions = c.decisions || [], byId = Object.fromEntries(decisions.filter((d) => d.id).map((d) => [d.id, d]));
+    const mk = (text, o) => Object.assign({ text, meta: "", quote: null, jump: null, after: false, unverified: false, sub: [] }, o);
+    const changed = (d) => mk("changed from: " + d.text, { jump: typeof d.at_ms === "number" ? d.at_ms : null, after: true,
+      sub: (d.replaces || []).filter((r) => byId[r]).map((r) => changed(byId[r])) });
+    const decided = decisions.filter((d) => d.status !== "replaced").map((d) => mk("✓ " + d.text, { quote: d, unverified: d.verified === false,
+      sub: (d.replaces || []).filter((r) => byId[r]).map((r) => changed(byId[r])) }));
+    const disagreed = (c.disagreements || []).map((x) => {
+      const by = byId[x.settled_by];
+      return mk(`⚡ ${x.topic} — ${by ? "settled by: " + by.text : "still open"}`,
+        { sub: x.positions.map((p) => mk(`${p.who || "Unknown speaker"}: ${p.stance}`, { quote: p, unverified: p.verified === false })) });
+    });
+    const todo = (c.action_items || []).map((a) => mk("☐ " + a.text, { meta: itemMeta(a), quote: a, unverified: a.verified === false }));
+    const questions = (c.open_questions || []).map((q) => mk("? " + q.text, { quote: q, unverified: q.verified === false }));
+    const chapters = (c.chapters || []).map((h) => typeof h.at_ms === "number" ? mk(`${fmtClock(h.at_ms)} ${h.title}`, { jump: h.at_ms }) : mk(h.title));
+    const sections = [{ key: "decided", heading: "Decided", empty: "Nothing was decided.", items: decided },
+      { key: "disagreed", heading: "Disagreed", empty: "No disagreements.", items: disagreed },
+      { key: "todo", heading: "To do", empty: "Nothing to do.", items: todo },
+      { key: "questions", heading: "Open questions", empty: "No open questions.", items: questions }];
+    if (chapters.length) sections.push({ key: "chapters", heading: "Chapters", empty: null, items: chapters });
+    const notes = [];
+    if (c.links === "failed") notes.push("Could not work out which decisions replaced earlier ones.");
+    if ((c.script_warnings || []).length) notes.push("Some text is in an unexpected alphabet.");
+    return { title: "BRIEF · " + c.kind_of_recording, notes, summary: c.summary, sections };
+  }
+  const exported = { canStart, modelLabel, itemMeta, footer, groupLabel, pickerKinds, promptVersionsBody, promptsText, quoteLabel, countsLine, retryJob, briefView, tabKinds };
   if (typeof module !== "undefined" && module.exports) { module.exports = exported; return; }
 
   // ---- page ---------------------------------------------------------------------------------------------
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
-  const KINDS = ["debrief", "notes", "checklist", "tags"];
-  const TITLES = { debrief: "Debrief", notes: "Notes", checklist: "Checklist", tags: "Tags" };
+  const TITLES = { brief: "Brief", debrief: "Debrief", notes: "Notes", checklist: "Checklist", tags: "Tags" };
   let models = [], doneRuns = [], source = "", watching = null, shown = null, tab = null;
   let versions = {};            // {kind: [version numbers]}; a version select shows only for kinds with more than one
 
@@ -197,7 +225,7 @@
     shown = g.group_id;
     $("aiResults").hidden = false;
     $("aiFooter").textContent = footer(g);
-    const kinds = KINDS.filter((k) => g.kinds.some((x) => x.kind === k));
+    const kinds = tabKinds(g.kinds.map((x) => x.kind));
     if (!tab || !kinds.includes(tab)) tab = kinds[0];
     const tabs = $("aiTabs");
     tabs.replaceChildren();
@@ -251,7 +279,8 @@
     }
     const c = kd.output.content;
     if (countsLine(kd)) panel.appendChild(el("div", { className: "meta" }, countsLine(kd)));
-    if (kd.kind === "checklist") { panel.appendChild(el("h3", null, c.title)); panel.appendChild(checklist(kd.output.id, c.items)); }
+    if (kd.kind === "brief") briefPanel(panel, c);
+    else if (kd.kind === "checklist") { panel.appendChild(el("h3", null, c.title)); panel.appendChild(checklist(kd.output.id, c.items)); }
     else if (kd.kind === "tags") panel.appendChild(tagPills(c.tags));
     else if (kd.kind === "notes") {
       panel.appendChild(el("h3", null, c.title));
@@ -263,6 +292,34 @@
     }
   }
 
+  function briefPanel(panel, c) {
+    const v = briefView(c);
+    panel.appendChild(el("h3", null, v.title));
+    for (const n of v.notes) panel.appendChild(el("div", { className: "bad-note" }, n));
+    panel.appendChild(el("p", { className: "summary" }, v.summary));
+    for (const s of v.sections) {
+      panel.appendChild(el("h3", null, s.heading));
+      if (!s.items.length) { panel.appendChild(el("div", { className: "meta" }, s.empty)); continue; }
+      panel.appendChild(briefList(s.items));
+    }
+  }
+  function briefList(items) {
+    const ul = el("ul");
+    for (const x of items) {
+      const li = el("li", { className: "item" + (x.unverified ? " unverified" : "") });
+      if (x.jump !== null) {
+        const b = el("button", { type: "button", className: "quote quote-play", title: "Play the recording from here" },
+          x.after ? `${x.text} ▶ ${fmtClock(x.jump)}` : "▶ " + x.text);
+        b.onclick = () => seekTo($("player"), x.jump);
+        li.appendChild(b);
+      } else li.appendChild(el("span", null, x.text));
+      if (x.meta) li.appendChild(el("span", { className: "meta" }, "  " + x.meta));
+      if (x.quote && x.quote.quote) li.appendChild(quoteNode(x.quote));
+      if (x.sub.length) li.appendChild(briefList(x.sub));
+      ul.appendChild(li);
+    }
+    return ul;
+  }
   function itemNode(it, tag) {
     const li = el(tag || "li", { className: "item" + (it.verified === false ? " unverified" : "") });
     li.appendChild(el("span", null, it.text));

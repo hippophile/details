@@ -1,5 +1,5 @@
 """llm-outputs: validate / retry once / never repair, quote verification, map-reduce, cache, dedupe."""
-import asyncio, json
+import asyncio, json, re, types
 
 import pytest
 
@@ -170,3 +170,200 @@ def test_model_context_caps_the_single_pass_size(mk_settings, tmp_path):
     ctx = pipeline.PROMPT_OVERHEAD_TOKENS + mk_settings().llm.max_tokens("checklist") + text_len - 50
     r = gen(chat, mk_settings, segments=LONG, data_dir=tmp_path, context=ctx, **env)
     assert r.mode == "map-reduce" and r.chunks >= 2
+
+
+# ---- brief (monday-brief): ids and order in code, the link call, merge across chunks ---------------------------
+
+from details.llm.client import StreamCancelled
+from llm_helpers import LINK_NONE
+
+TIMED = [(i * 1000, t) for i, t in enumerate(SEGS)]
+BRIEF_TEMPLATE = types.SimpleNamespace(id=None, name="brief", version=1, body="{{transcript}}", sha256="c" * 64, checks=())
+
+
+def genb(chat, mk_settings, segments=SEGS, timed="default", data_dir=None, template=BRIEF_TEMPLATE, **env):
+    s = mk_settings(**env)
+    timed = [(i * 1000, t) for i, t in enumerate(segments)] if timed == "default" else timed
+
+    async def go():
+        return await pipeline.generate_kind(chat, settings=s, kind="brief", template=template, model="m",
+                                            context=100_000, segments=segments, language="Greek", title="T",
+                                            data_dir=data_dir, timed_segments=timed)
+    return asyncio.run(asyncio.wait_for(go(), 20))
+
+
+def brief3():
+    """Model order is NOT transcript order; the last decision's quote is not in the transcript."""
+    c = good("brief")
+    c["decisions"] = [{"text": "Documentation", "quote": "ετοιμάσει το documentation"},               # 2 s
+                      {"text": "Deploy 12/11", "quote": "Θα κάνουμε deploy στις 12 Νοεμβρίου"},      # 1 s
+                      {"text": "Μοντέλο", "quote": "ποιο μοντέλο"},                                   # 4 s
+                      {"text": "Δεν ειπώθηκε", "quote": "κάτι που δεν υπάρχει"}]                     # unlocated
+    p = lambda who, st, q: {"who": who, "stance": st, "quote": q}
+    c["disagreements"] = [{"topic": "Late", "positions": [p("A", "a", "ρίσκο με τα δεδομένα"), p("B", "b", "ποιο μοντέλο")]},
+                          {"topic": "Early", "positions": [p("A", "a", "Καλημέρα σε όλους"), p("B", "b", "ξεκινάμε τη συνάντηση")]}]
+    c["chapters"] = [{"title": "Τέλος", "quote": "ποιο μοντέλο"}, {"title": "Αρχή", "quote": "Καλημέρα σε όλους"}]
+    return c
+
+
+def link(*dec, dis=()):
+    return {"decisions": [{"id": i, "replaces": r} for i, r in dec], "disagreements": [{"id": i, "settled_by": s} for i, s in dis]}
+
+
+def test_brief_ids_and_order_are_assigned_by_code(mk_settings):
+    chat = ScriptedChat(brief3(), LINK_NONE)
+    r = genb(chat, mk_settings)
+    c = r.content
+    assert [(d["id"], d["text"]) for d in c["decisions"]] == [("d1", "Deploy 12/11"), ("d2", "Documentation"),
+                                                              ("d3", "Μοντέλο"), ("d4", "Δεν ειπώθηκε")]
+    assert [(d["id"], d["topic"]) for d in c["disagreements"]] == [("x1", "Early"), ("x2", "Late")]
+    assert [ch["title"] for ch in c["chapters"]] == ["Αρχή", "Τέλος"]
+    assert [d["verified"] for d in c["decisions"]] == [True, True, True, False]
+    assert schemas.validate("brief", c, stored=True) == []
+    assert "at_ms" not in str(c)                                    # times are added when read, never stored
+
+
+def test_the_link_call_sees_numbered_items_with_times_and_no_transcript(mk_settings):
+    chat = ScriptedChat(brief3(), LINK_NONE)
+    r = genb(chat, mk_settings)
+    assert [c["kind"] for c in chat.calls] == ["brief", "brief_link"]
+    call = chat.calls[1]
+    assert call["max_tokens"] == mk_settings().llm.max_tokens_brief_link == 800
+    assert call["schema"]["properties"].keys() == {"decisions", "disagreements"}
+    text = call["messages"][0]["content"]
+    for needle in ("d1", "d4", "x1", "x2", "Deploy 12/11", "Early", "00:01"):
+        assert needle in text, needle
+    assert SEGS[0] not in text and SEGS[3] not in text              # no transcript in the link call
+    assert r.content["links"] == "ok"
+
+
+def test_link_is_applied_in_code_and_never_changes_text(mk_settings):
+    reply = link(("d2", ["d1"]), ("d3", []), dis=[("x1", "d2"), ("x2", None)])
+    r = genb(ScriptedChat(brief3(), reply), mk_settings)
+    d = {x["id"]: x for x in r.content["decisions"]}
+    assert (d["d2"]["status"], d["d2"]["replaces"], d["d2"]["replaced_by"]) == ("final", ["d1"], None)
+    assert (d["d1"]["status"], d["d1"]["replaces"], d["d1"]["replaced_by"]) == ("replaced", [], "d2")
+    assert (d["d3"]["status"], d["d4"]["status"]) == ("final", "final")
+    assert [x["settled_by"] for x in r.content["disagreements"]] == ["d2", None]
+    assert [x["text"] for x in r.content["decisions"]] == ["Deploy 12/11", "Documentation", "Μοντέλο", "Δεν ειπώθηκε"]
+    assert r.content["links"] == "ok" and schemas.validate("brief", r.content, stored=True) == []
+
+
+def test_link_is_folded_into_the_one_attempt_and_kept_in_params(mk_settings):
+    r = genb(ScriptedChat(brief3(), link(("d2", ["d1"]))), mk_settings)
+    assert len(r.attempts) == 1 and r.attempts[0].valid
+    a = r.attempts[0]
+    assert (a.tokens_in, a.tokens_out, a.wall_ms) == (200, 100, 1000)         # 100/50/500 per call, two calls
+    lk = r.params["link"]
+    assert lk["status"] == "ok" and "d1" in lk["prompt"] and '"d2"' in lk["reply"] and lk["errors"] is None
+    assert r.stats["tokens_in"] == 200
+
+
+@pytest.mark.parametrize("bad,needle", [
+    (link(("d2", ["d9"])), "d9"),                                   # unknown id
+    (link(("d9", [])), "d9"),
+    (link(("d1", ["d2"])), "d2"),                                   # points forward
+    (link(("d2", ["d2"])), "d2"),                                   # itself
+    (link(("d2", ["d1"]), ("d3", ["d1"])), "d1"),                   # d1 replaced twice
+    (link(dis=[("x1", "d9")]), "d9"),                               # settled by an unknown decision
+    (link(dis=[("x9", None)]), "x9"),
+    ({"decisions": "d1"}, "decisions"),                             # wrong shape
+])
+def test_each_invalid_link_is_retried_once_with_the_error(mk_settings, bad, needle):
+    chat = ScriptedChat(brief3(), bad, link(("d2", ["d1"])))
+    r = genb(chat, mk_settings)
+    assert [c["kind"] for c in chat.calls] == ["brief", "brief_link", "brief_link"]
+    retry = chat.calls[2]["messages"]
+    assert len(retry) == 3 and retry[1]["role"] == "assistant" and needle in retry[-1]["content"]
+    assert r.content["links"] == "ok" and r.params["link"]["attempts"] == 2
+    assert r.attempts[0].tokens_in == 300                                      # all three calls counted
+
+
+def test_a_link_that_stays_invalid_keeps_the_brief_with_links_failed(mk_settings):
+    chat = ScriptedChat(brief3(), link(("d1", ["d2"])), link(("d1", ["d2"])))
+    r = genb(chat, mk_settings)
+    c = r.content
+    assert r.attempts[0].valid and len(r.attempts) == 1 and len(chat.calls) == 3
+    assert c["links"] == "failed" and [d["status"] for d in c["decisions"]] == ["final"] * 4
+    assert all(d["replaces"] == [] and d["replaced_by"] is None for d in c["decisions"])
+    assert all(x["settled_by"] is None for x in c["disagreements"])
+    assert r.params["link"]["status"] == "failed" and r.params["link"]["errors"]
+    assert schemas.validate("brief", c, stored=True) == []
+
+
+def test_a_link_call_that_errors_keeps_the_brief_with_links_failed(mk_settings):
+    r = genb(ScriptedChat(brief3(), LLMError("LM Studio died")), mk_settings)
+    assert r.content["links"] == "failed" and r.attempts[0].valid
+    assert "LM Studio died" in r.params["link"]["error"]
+
+
+def test_a_cancel_during_the_link_call_propagates(mk_settings):
+    with pytest.raises(StreamCancelled):
+        genb(ScriptedChat(brief3(), StreamCancelled()), mk_settings)
+
+
+def test_link_is_skipped_with_fewer_than_two_decisions(mk_settings):
+    chat = ScriptedChat(good("brief"))
+    r = genb(chat, mk_settings)
+    assert len(chat.calls) == 1 and r.content["links"] == "skipped" and "link" not in r.params
+    d = r.content["decisions"][0]
+    assert (d["id"], d["status"], d["replaces"], d["replaced_by"]) == ("d1", "final", [], None)
+    lesson = good("brief", kind_of_recording="lesson", decisions=[], disagreements=[], action_items=[])
+    r = genb(ScriptedChat(lesson), mk_settings)
+    assert r.content["links"] == "skipped" and r.content["decisions"] == []
+
+
+def test_one_decision_and_one_disagreement_do_get_a_link_call(mk_settings):
+    c = brief3()
+    c["decisions"], c["disagreements"] = c["decisions"][:1], c["disagreements"][:1]
+    chat = ScriptedChat(c, link(dis=[("x1", "d1")]))
+    r = genb(chat, mk_settings)
+    assert len(chat.calls) == 2 and r.content["disagreements"][0]["settled_by"] == "d1"
+
+
+def test_two_decisions_and_no_disagreement_do_get_a_link_call_and_without_timed_segments_order_is_the_models(mk_settings):
+    chat = ScriptedChat(brief3(), LINK_NONE)
+    r = genb(chat, mk_settings, timed=None)
+    assert [d["text"] for d in r.content["decisions"]] == ["Documentation", "Deploy 12/11", "Μοντέλο", "Δεν ειπώθηκε"]
+    assert [d["id"] for d in r.content["decisions"]] == ["d1", "d2", "d3", "d4"]
+
+
+def test_a_decision_from_chunk_3_can_replace_one_from_chunk_1_and_the_link_runs_once(mk_settings, tmp_path):
+    def reply(call):
+        if call["kind"] == "reduce":
+            return {"text": "Τελική σύνοψη"}
+        if call["kind"] == "brief_link":
+            return link(("d2", ["d1"]))
+        ids = sorted({int(w) for w in re.findall(r"Segment (\d+)", call["messages"][0]["content"])})
+        c = good("brief")
+        c["decisions"] = [{"text": f"Deploy {i}", "quote": f"θα κάνουμε deploy στις {i} Νοεμβρίου"} for i in ids if i in (0, 5)]
+        c["chapters"], c["action_items"], c["open_questions"] = [], [], []
+        return c
+    chat = ScriptedChat(default=reply)
+    r = genb(chat, mk_settings, segments=LONG, data_dir=tmp_path, **ENV)
+    assert [c["kind"] for c in chat.calls] == ["brief"] * 3 + ["reduce", "brief_link"]
+    d = r.content["decisions"]
+    assert [(x["id"], x["text"], x["status"]) for x in d] == [("d1", "Deploy 0", "replaced"), ("d2", "Deploy 5", "final")]
+    assert d[1]["replaces"] == ["d1"] and d[0]["replaced_by"] == "d2"
+    assert r.content["summary"] == "Τελική σύνοψη" and r.mode == "map-reduce" and r.chunks == 3
+    assert r.attempts[0].tokens_in == 500
+
+
+def test_merge_brief_concatenates_dedupes_and_votes_on_the_kind():
+    def c(kind, dec, topic, stance, chapters):
+        b = good("brief", kind_of_recording=kind, decisions=dec, chapters=chapters)
+        b["disagreements"] = [{"topic": topic, "positions": [{"who": "A", "stance": stance, "quote": "q"},
+                                                            {"who": "B", "stance": "b", "quote": "q"}]}]
+        return b
+    d = lambda t: {"text": t, "quote": "q"}
+    ch = lambda t: {"title": t, "quote": "q"}
+    m = pipeline.merge("brief", [c("meeting", [d("Α"), d("Β")], "Budget", "x", [ch("Intro"), ch("Plan")]),
+                                 c("lesson", [d("β"), d("Γ")], "budget", "y", [ch("Plan"), ch("Plan 2")]),
+                                 c("meeting", [d("Δ")], "Other", "z", [ch("Plan 2")])])
+    assert m["kind_of_recording"] == "meeting"
+    assert [x["text"] for x in m["decisions"]] == ["Α", "Β", "Γ", "Δ"]
+    assert [x["topic"] for x in m["disagreements"]] == ["Budget", "Other"]
+    assert [p["stance"] for p in m["disagreements"][0]["positions"]] == ["x", "b", "y"]       # merged, duplicates once
+    assert [x["title"] for x in m["chapters"]] == ["Intro", "Plan", "Plan 2"]                # consecutive repeats dropped
+    tie = pipeline.merge("brief", [c("lesson", [], "t", "s", []), c("meeting", [], "t", "s", [])])
+    assert tie["kind_of_recording"] == "lesson"                                              # ties: first

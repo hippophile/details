@@ -27,7 +27,17 @@ def _items(content, *path):
 
 def output_counts(kind, content):
     """Counts shown next to each other in the compare view; every kind also has `unverified` (verified:false items)."""
-    if kind == "debrief":
+    if kind == "brief":
+        dec, dis = _items(content, "decisions"), _items(content, "disagreements")
+        pos = [p for d in dis for p in _items(d, "positions")]
+        lists = {k: _items(content, k) for k in ("action_items", "open_questions", "chapters")}
+        counts = {"decisions_final": sum(1 for d in dec if d.get("status") != "replaced"),
+                  "decisions_replaced": sum(1 for d in dec if d.get("status") == "replaced"),
+                  "disagreements_open": sum(1 for d in dis if not d.get("settled_by")),
+                  "disagreements_settled": sum(1 for d in dis if d.get("settled_by")),
+                  **{k: len(v) for k, v in lists.items()}}
+        all_items = dec + pos + [i for v in lists.values() for i in v]
+    elif kind == "debrief":
         lists = {k: _items(content, k) for k in ("decisions", "action_items", "risks", "open_questions")}
         counts = {k: len(v) for k, v in lists.items()}
         all_items = [i for v in lists.values() for i in v]

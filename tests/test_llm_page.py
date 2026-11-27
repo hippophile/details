@@ -9,7 +9,7 @@ from details.settings import REPO_ROOT
 
 IDS = ("aiSlot", "aiSource", "aiModel", "aiLang", "aiStart", "aiReason", "aiStatus", "aiResults", "aiTabs", "aiPanel",
        "aiFooter", "aiCopy", "aiDownload", "aiCopyAll", "aiDownloadAll", "aiMsg")
-KINDS = ("debrief", "notes", "checklist", "tags")
+KINDS = ("brief", "debrief", "notes", "checklist", "tags")
 
 
 def fetch(mk_settings, *paths):
@@ -62,3 +62,18 @@ def test_node_unit_tests_for_outputs_helpers():
     r = subprocess.run([node, "--test", str(REPO_ROOT / "tests" / "js" / "outputs.test.mjs")],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-500:]
+
+
+def test_brief_is_the_first_chip_tab_prompts_entry_and_compare_tab(mk_settings):
+    html, outputs, compare, prompts_js = fetch(mk_settings, "/analyse", "/analyse/outputs.js", "/analyse/compare.js",
+                                               "/prompts/prompts.js")
+    chips = re.findall(r'data-kind="(\w+)"', html)
+    assert chips == ["brief", "debrief", "notes", "checklist", "tags"]
+    assert re.search(r'<input[^>]*data-kind="brief"[^>]*checked[^>]*> Brief', html)
+    assert 'const KINDS = ["brief", "debrief", "notes", "checklist", "tags"]' in outputs and 'brief: "Brief"' in outputs
+    assert '["diff", "Transcript diff"], ["brief", "Brief"], ["debrief", "Debrief"]' in compare
+    assert 'brief: "Brief"' in prompts_js
+    for needle in ("Nothing was decided.", "No disagreements.", "changed from", "still open", "settled by"):
+        assert needle in outputs, needle
+    for js in (outputs, compare):
+        assert "innerHTML" not in js

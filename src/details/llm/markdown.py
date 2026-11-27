@@ -40,8 +40,48 @@ def _section(heading, lines):
     return ["", f"## {heading}", ""] + lines if lines else []
 
 
+def _brief_lines(c):
+    by = {d["id"]: d for d in c["decisions"] if d.get("id")}
+    at = lambda i: f" [{_clock(i['at_ms'])}]" if isinstance(i.get("at_ms"), (int, float)) else ""
+
+    def decision(d, depth):
+        pad = "  " * depth
+        out = [f"{pad}- changed from: {_one(d['text'])}{at(d)}"] if depth else [
+            f"- {_one(d['text'])}{_meta(d)}", *([f"  > “{_one(d['quote'])}”{at(d)}"] if d.get("quote") else [])]
+        for r in d.get("replaces") or []:
+            if r in by:
+                out += decision(by[r], depth + 1)
+        return out
+
+    def position(p):
+        who = _one(p["who"]) if p.get("who") else "Unknown speaker"
+        return [f"  - {who}: {_one(p['stance'])}{_meta(p)}", *([f"    > “{_one(p['quote'])}”{at(p)}"] if p.get("quote") else [])]
+
+    def disagreement(x):
+        state = f"settled by: {_one(by[x['settled_by']]['text'])}" if x.get("settled_by") in by else "still open"
+        return [f"- {_one(x['topic'])} ({state})"] + [l for p in x["positions"] for l in position(p)]
+
+    final = [d for d in c["decisions"] if d.get("status") != "replaced"]
+    decided = [l for d in final for l in decision(d, 0)] or ["Nothing was decided."]
+    if c.get("links") == "failed":
+        decided.insert(0, "_Could not work out which decisions replaced earlier ones._")
+    lines = ["# Brief", "", _one(c["summary"])]
+    if c.get("script_warnings"):
+        lines += ["", "_Some text is in an unexpected alphabet._"]
+    for heading, body in (("Decided", decided),
+                          ("Disagreed", [l for x in c["disagreements"] for l in disagreement(x)] or ["No disagreements."]),
+                          ("To do", _tasks(c["action_items"]) or ["Nothing to do."]),
+                          ("Open questions", _bullets(c["open_questions"]) or ["No open questions."]),
+                          ("Chapters", [f"- {'[' + _clock(i['at_ms']) + '] ' if isinstance(i.get('at_ms'), (int, float)) else ''}"
+                                        f"{_one(i['title'])}" for i in c["chapters"]] or ["No chapters."])):
+        lines += ["", f"## {heading}", ""] + body
+    return lines
+
+
 def render_output(kind, c):
-    if kind == "checklist":
+    if kind == "brief":
+        lines = _brief_lines(c)
+    elif kind == "checklist":
         lines = [f"# {_one(c['title'])}", ""] + _tasks(c["items"])
     elif kind == "debrief":
         lines = ["# Debrief", "", _one(c["summary"])]

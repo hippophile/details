@@ -98,6 +98,8 @@ class Llm:
     max_tokens_notes: int
     max_tokens_checklist: int
     max_tokens_tags: int
+    max_tokens_brief: int
+    max_tokens_brief_link: int
     stream: bool                  # show the reply token by token (LM Studio streaming); validation still runs at the end
     stream_idle_timeout_s: float  # a streamed call fails after this long without bytes (the reply may take long)
     temperature: float = 0.1      # sampling temperature for every AI call (0 = most repeatable)
@@ -264,7 +266,7 @@ def _v_stt(s):
 
 def _v_llm(s):
     for k in ("single_pass_max_tokens", "chunk_tokens", "max_tokens_debrief", "max_tokens_notes",
-              "max_tokens_checklist", "max_tokens_tags"):
+              "max_tokens_checklist", "max_tokens_tags", "max_tokens_brief", "max_tokens_brief_link"):
         if getattr(s, k) < 1:
             raise ValueError(f"llm.{k}: must be >= 1")
     if s.chunk_overlap_tokens < 0:

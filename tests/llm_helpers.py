@@ -36,7 +36,16 @@ GOOD = {
                              "quote": "ρίσκο με τα δεδομένα του GDPR"}]},
     "tags": {"schema_version": 1, "tags": [{"name": "deploy", "quote": "Θα κάνουμε deploy"},
                                            {"name": "gdpr", "quote": "δεδομένα του GDPR"}]},
+    "brief": {"schema_version": 1, "kind_of_recording": "meeting", "summary": "Συζήτηση για το deploy.",
+              "chapters": [{"title": "Έναρξη", "quote": "Καλημέρα σε όλους"},
+                           {"title": "Deploy", "quote": "Θα κάνουμε deploy"}],
+              "decisions": [{"text": "Deploy στις 12 Νοεμβρίου", "quote": "Θα κάνουμε deploy στις 12 Νοεμβρίου"}],
+              "disagreements": [],
+              "action_items": [{"text": "Ετοιμασία documentation", "owner": "Νίκος", "due": None, "done": False,
+                                "quote": "Ο Νίκος θα ετοιμάσει το documentation"}],
+              "open_questions": [{"text": "Ποιο μοντέλο;", "quote": "ποιο μοντέλο θα χρησιμοποιήσουμε"}]},
 }
+LINK_NONE = {"decisions": [], "disagreements": []}
 
 
 def good(kind, **over):
@@ -52,7 +61,7 @@ def kind_of(body):
 def good_responder(body):
     """FakeLMStudio.responder: a valid reply for whatever kind is asked (reduce calls get {"text": ...})."""
     k = kind_of(body)
-    return {"text": "Σύνοψη"} if k == "reduce" else good(k)
+    return {"text": "Σύνοψη"} if k == "reduce" else LINK_NONE if k == "brief_link" else good(k)
 
 
 class ScriptedChat:

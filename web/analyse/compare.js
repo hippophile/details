@@ -21,6 +21,9 @@
     if (kind === "checklist") parts = [plural(c.items, "item"), `${c.done} done`, `${c.with_due || 0} with due date`];
     else if (kind === "tags") parts = [plural(c.tags, "tag")];
     else if (kind === "notes") parts = [plural(c.sections, "section"), plural(c.bullets, "bullet")];
+    else if (kind === "brief") parts = [`${c.decisions_final} final ${c.decisions_final === 1 ? "decision" : "decisions"}`, `${c.decisions_replaced} replaced`,
+      `${c.disagreements_open} open ${c.disagreements_open === 1 ? "disagreement" : "disagreements"}`, `${c.disagreements_settled} settled`,
+      plural(c.action_items, "action item"), plural(c.open_questions, "open question"), plural(c.chapters, "chapter")];
     else parts = [plural(c.decisions, "decision"), plural(c.action_items, "action item"), plural(c.risks, "risk"), plural(c.open_questions, "open question")];
     if (c.unverified) parts.push(`${c.unverified} unverified`);
     return parts.join(" · ");
@@ -51,7 +54,7 @@
   const $ = (id) => document.getElementById(id);
   const rec = new URLSearchParams(location.search).get("rec");
   if (!rec) return;
-  const TABS = [["diff", "Transcript diff"], ["debrief", "Debrief"], ["notes", "Notes"], ["checklist", "Checklist"], ["tags", "Tags"]];
+  const TABS = [["diff", "Transcript diff"], ["brief", "Brief"], ["debrief", "Debrief"], ["notes", "Notes"], ["checklist", "Checklist"], ["tags", "Tags"]];
   const NODES_PER_FRAME = 500;
   let ticked = [], data = null, tab = "diff", texts = null, worker = null, raf = 0, token = 0, paneSide = "a";
 
@@ -257,6 +260,12 @@
     } else if (kind === "notes") {
       box.appendChild(el("h3", null, c.title));
       for (const s of c.sections) { box.appendChild(el("h3", null, s.heading)); box.appendChild(ul(s.bullets)); }
+    } else if (kind === "brief") {
+      box.appendChild(el("p", null, c.summary));
+      const final = (c.decisions || []).filter((d) => d.status !== "replaced");
+      const lists = [["Decisions", final], ["Disagreements", (c.disagreements || []).map((x) => ({ text: x.topic + (x.settled_by ? " (settled)" : " (open)") }))],
+        ["Action items", c.action_items], ["Open questions", c.open_questions]];
+      for (const [title, items] of lists) if (items && items.length) { box.appendChild(el("h3", null, title)); box.appendChild(ul(items)); }
     } else {
       box.appendChild(el("p", null, c.summary));
       for (const [title, items] of [["Decisions", c.decisions], ["Action items", c.action_items], ["Risks", c.risks], ["Open questions", c.open_questions]]) {

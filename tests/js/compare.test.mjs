@@ -62,3 +62,10 @@ test("pane header text: name, version, and the check as plain words", () => {
   assert.equal(C.promptText("checklist", null), "");
   assert.equal(C.promptText("tags", undefined), "");
 });
+
+test("brief counts: final and replaced decisions, open and settled disagreements, the rest", () => {
+  const c = { decisions_final: 2, decisions_replaced: 1, disagreements_open: 1, disagreements_settled: 3, action_items: 1, open_questions: 0, chapters: 4, unverified: 0 };
+  assert.equal(C.countsText("brief", c), "2 final decisions · 1 replaced · 1 open disagreement · 3 settled · 1 action item · 0 open questions · 4 chapters");
+  assert.equal(C.countsText("brief", { ...c, decisions_final: 1, unverified: 2 }), "1 final decision · 1 replaced · 1 open disagreement · 3 settled · 1 action item · 0 open questions · 4 chapters · 2 unverified");
+  assert.equal(C.sideSummary("brief", { invalid: false, counts: c }).startsWith("2 final decisions"), true);
+});

@@ -52,7 +52,7 @@ async def _persist(c, first_id, kind, result):
             rid = (await cur.fetchone())["id"]
         tps = a.tokens_out / (a.wall_ms / 1000) if a.wall_ms > 0 and a.tokens_out else None
         extra = {"mode": result.mode, "chunks": result.chunks, "cache_hits": result.cache_hits,
-                 "verified": result.verified, "unverified": result.unverified}
+                 "verified": result.verified, "unverified": result.unverified, **result.params}
         err = None if a.valid else f"model returned invalid JSON: {a.errors[0]}"
         await c.execute(
             "UPDATE analysis_run SET status='done', finished_at=now(), wall_ms=%s, tokens_in=%s, tokens_out=%s, "
@@ -86,8 +86,10 @@ async def _analyse(ctx):
             raise StepError("analysis not found")
         run = await (await c.execute("SELECT s.language, s.text, r.title FROM stt_run s JOIN recording r "
                                      "ON r.id=s.recording_id WHERE s.id=%s", (rows[0]["stt_run_id"],))).fetchone()
-        segs = [r["text"].strip() for r in await (await c.execute(
-            "SELECT text FROM transcript_segment WHERE stt_run_id=%s ORDER BY idx", (rows[0]["stt_run_id"],))).fetchall()]
+        seg_rows = await (await c.execute("SELECT start_ms, text FROM transcript_segment WHERE stt_run_id=%s ORDER BY idx",
+                                          (rows[0]["stt_run_id"],))).fetchall()
+    segs = [r["text"].strip() for r in seg_rows]
+    timed = [(r["start_ms"], r["text"]) for r in seg_rows]       # plain text with times: quotes are located in these
     segs = [s for s in segs if s] or ([run["text"].strip()] if run and run["text"] and run["text"].strip() else [])
     preface = ""
     if p.get("diarization_run_id"):         # speakers-diarization: `Name: text` lines with the names current now
@@ -183,7 +185,8 @@ async def _analyse(ctx):
             result = await pipeline.generate_kind(chat, settings=ctx.settings, kind=kind, template=template,
                                                   model=model_name, context=entry.context, segments=segs,
                                                   language=language, title=run["title"], data_dir=ctx.data_dir,
-                                                  on_progress=on_progress, on_event=on_event, preface=preface)
+                                                  on_progress=on_progress, on_event=on_event, preface=preface,
+                                                  timed_segments=timed)
         except StreamCancelled:
             return None                     # cancelled mid-stream: nothing stored, the finalizer ends every row 'cancelled'
         except LLMError as e:

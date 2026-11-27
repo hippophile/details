@@ -119,3 +119,62 @@ that a quote supports its claim, one-click transcript + speakers + brief.
 - **Files the decision list missed:** chip in `web/analyse/index.html`; `compare.js` `TABS` and its per-kind branches;
   `comparison.py` loops `KINDS`, so its response gains a `brief` key.
 - **Cost:** the default analysis now runs five kinds instead of four: slower. Time measured in task 3.1.
+
+## Measured
+
+### Task 1.0: where the four kinds are hard-coded (grep, 2026-11-27)
+- Source, kind list: `schemas.KINDS` (1, everything else imports it: `markdown`, `prompts`, `api/analyses`, `api/prompts`,
+  `comparison`); literal lists in web: `outputs.js` KINDS + TITLES, `compare.js` TABS, `prompts.js` TITLES (4 lines);
+  `index.html` 4 chips.
+- Source, per-kind branches: `pipeline.merge` 4, `pipeline.REDUCE` 2 entries, `markdown.render_output` 4,
+  `comparison.output_counts` 4, `compare.js` `countsText` + `content` (the final `else` is debrief), `outputs.js`
+  `renderKind` (the final `else` is debrief).
+- Settings: `max_tokens_<kind>` 4 fields + the `_v_llm` tuple in `settings.py`, 4 lines in `config.toml`, 4 in the inline
+  TOML of `test_settings.py`. `Llm.max_tokens(kind)` is `getattr`, so `max_tokens_brief_link` needs no new code path.
+- Tests asserting the list: `test_llm_schemas.py` (2), `test_llm_page.py` (1), `test_llm_markdown.py` (1),
+  `test_compare_counts.py` (1), `test_llm_steps.py` KINDS (1), `test_prompts_api.py` (3: stored rows, kinds set,
+  folder list), `test_settings.py` inline TOML. `test_llm_pipeline.py` / `test_llm_prompts.py` loop over `KINDS` and need
+  a `brief` fixture / file only. The 422 test (`test_llm_api.py`) does not assert the message text.
+- DB: 0 CHECK constraints on `kind` (`job.kind`, `analysis_run.kind`, `output.kind`, prompt kind are all plain
+  `text NOT NULL`, db/migrations 0003 and 0005). No migration needed.
+
+### Task 3.1: real runs, 2026-11-27 (no app server; `pipeline.generate_kind` called directly)
+Script and outputs: `scratchpad/brief-proof/` (`run_brief.py`, `*.brief.json`, `*.brief.md`, `*.run.json`, logs). Prompt body
+from `prompts/brief/v1.md`, settings from the repo, segments read with SELECT only (read-only transaction). LM Studio had
+nothing loaded before; each model was loaded once under the app's identifier (`details-gemma-12b`, `details-krikri-8b`,
+16384 context, as in `models.toml`) and unloaded afterwards. Free+inactive RAM before loading: 12.7 GB (needs 10) and 17.5 GB (needs 8).
+
+| Run | Result |
+|---|---|
+| `manos-filipGerman` (15.3 min, whisper-large, 402 segments), Gemma 4 12B | `kind_of_recording: lesson` ✓. decisions 0 ✓, action items 0 ✓, open questions 0, **disagreements 1 ✗ (invented)**. 92.8 s, 2 calls (9,391 in / 944 out). Attempt 1 was rejected by `known_scripts` ("summary: contains Bengali letters"), the retry fixed it: this is the roast failure, caught live. Chapters 5, one with a quote not found (no time). Summary Greek with a few garbled words (`ασχονούνται`, `κλίινση`), all Greek letters. |
+| same, Krikri 8B | `lesson` ✓ but **2 decisions (one "replaced" by the other), 1 action item, 2 open questions invented ✗**. 38.2 s, 2 calls incl. the link call (3,701 in / 443 out). Link ran because it saw 2 decisions: it replaced the model's own invention. |
+| `giannis-vg-html` (128.2 min = 2 h 08, **whisper-turbo: it has no whisper-large run**, 2338 segments), Gemma 4 12B | map-reduce, **4 chunks**, calls: 4 chunk + 1 reduce + 1 link = 6, **411.7 s (6.9 min)**, **33,031 tokens in / 2,782 out**. `meeting`, `links: ok`, decisions 9 (9 final, **0 replaced**; the link call said "no replaces"), disagreements 2 (both open), action items 5, open questions 5, chapters 19, `script_warnings` none. Quotes found 31, not found 11. |
+
+Five decisions of the Giannis brief to click-check (time is where the quote is first found; all five quotes were found):
+1. 6:08 "Η παρουσίαση πρέπει να επικεντρώνεται στην αφήγηση μιας ιστορίας." ← "Για να πω μια ιστορία δεν πρέπει να με οδηγείς."
+2. 32:00 "Αποφασίστηκε η αποφυγή scroll στις διαφάνειες." ← "No scrolls." (short quote; first occurrence may be an earlier one)
+3. 43:32 "Αποφασίστηκε η χρήση της ορολογίας 'Usage' αντί για 'Uses'." ← "Το uses, είναι λάθος αν είναι. Usage είναι."
+4. 1:11:36 "Χρήση πραγματικών δεδομένων αντί για mock data." ← "Βάλε data, δεν ξέρω τον ένωσο, θέλω να μου λέμε θεωρετικά"
+5. 2:05:30 "Χρήση HTML για την παρουσίαση των δεδομένων." ← "Ο στόχος είναι να αντικαταστήσουμε το PowerPoint μας με κάτι άλλο physical, το οποίο λέγεται HTML"
+
+What the real runs show (honest):
+- The negative test is **not passed**: both models call the drill a `lesson` but still invent items (Gemma 1 disagreement, Krikri
+  2 decisions + 1 action item + 2 questions). The schema and the link step stop invented structure only; they cannot stop a
+  model from reading a correction as a decision. Prompt wording is the lever, not code: a later `prompts/brief/v2.md`.
+- Invented speaker names: Gemma wrote `who: "Speaker 1"` / `"Speaker 2"` in the Giannis brief although the prompt says null unless
+  spoken, and one position quote is English text that is not in the transcript ("I think usage is the most important."). Nothing
+  here checks `who` against the transcript.
+- The link call is cheap (6.6 s, 529 in / 41 out on 9 decisions) but found no replacement in 2 h of design talk; whether that
+  is right was not checked against the audio. The "replaced" path was exercised for real only by Krikri on the invented decisions.
+- Time cost: the Giannis brief alone took 6.9 min on top of the other four kinds (measured above for this one kind only).
+- Short quotes ("No scrolls.", "Δεν είναι") resolve to their first occurrence in the recording, which can be the wrong place.
+
+### Corrections made while implementing
+- `giannis-vg-html` is 2 h 08, not 2:08 minutes, and has only a whisper-turbo run; the proof used it (largest available).
+- Decision 5 says "twice" for an LM Studio error during the link; like every other call, `LLMError` is not retried (only
+  invalid replies are), so one error ends the link and stores `links: "failed"`. Tokens of a reply already received before an
+  error are not counted in the folded attempt.
+- A position with no speaker is shown as "Unknown speaker: stance" (page and Markdown), not "null: stance" as the Caveats line said.
+- Markdown format chosen: `- decision` + quote line + nested `- changed from: earlier [mm:ss]` (a chain nests deeper); disagreement
+  `- topic (still open)` or `(settled by: decision text)` with one nested line per position; empty chapters read "No chapters."; a failed
+  link or script warnings add one italic line (the export would otherwise drop them silently).

@@ -88,8 +88,8 @@ def test_sync_stores_checklist_v1_and_v2_and_the_other_kinds_v1(db, db_url, tmp_
             await pool.close()
     asyncio.run(go())
     rows = db.execute("SELECT name, version, checks FROM prompt_template ORDER BY name, version").fetchall()
-    assert rows == [("checklist", 1, []), ("checklist", 2, ["due_year_in_transcript"]), ("debrief", 1, []),
-                    ("notes", 1, []), ("tags", 1, [])]
+    assert rows == [("brief", 1, ["known_scripts"]), ("checklist", 1, []), ("checklist", 2, ["due_year_in_transcript"]),
+                    ("debrief", 1, []), ("notes", 1, []), ("tags", 1, [])]
 
 
 def test_two_machines_collided_error_names_both_hashes(db, db_url, tmp_path):
@@ -123,7 +123,7 @@ def test_list_has_versions_latest_checks_and_run_counts(db, db_url, mk_settings,
         assert ck["versions"][0]["sha256"] == V1_CHECKLIST_SHA and ck["versions"][0]["checks"] == []
         assert ck["versions"][1]["checks"] == ["due_year_in_transcript"] and ck["versions"][0]["created_at"]
         assert [v["runs"] for v in ck["versions"]] == [0, 0]
-        assert {k["kind"] for k in j["kinds"]} == {"debrief", "notes", "checklist", "tags"}
+        assert {k["kind"] for k in j["kinds"]} == {"brief", "debrief", "notes", "checklist", "tags"}
         tid = db.execute("SELECT id FROM prompt_template WHERE name='checklist' AND version=1").fetchone()[0]
         for _ in range(2):
             db.execute("INSERT INTO analysis_run (group_id, stt_run_id, kind, model_id, prompt_template_id) "
@@ -273,7 +273,7 @@ def test_unknown_kind_and_traversal_are_404_and_write_nothing(db, db_url, mk_set
             r = await c.post(f"/api/prompts/{kind}", json={"base_version": 1, "body": "{{transcript}} z"})
             assert r.status == 404, kind
         assert not (tmp_path / "x").exists() and not (root.parent / "x").exists()
-        assert sorted(p.name for p in root.iterdir()) == ["checklist", "debrief", "notes", "tags"]
+        assert sorted(p.name for p in root.iterdir()) == ["brief", "checklist", "debrief", "notes", "tags"]
     api(db_url, mk_settings, tmp_path, body)
 
 

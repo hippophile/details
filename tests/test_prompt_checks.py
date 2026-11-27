@@ -144,3 +144,87 @@ def test_unknown_check_names_the_file_and_the_check(tmp_path):
     (d / "v1.md").write_text(FRONT.format(v=1, extra="checks: nonsense\n"))
     with pytest.raises(prompts.PromptError, match=r"v1\.md.*nonsense"):
         prompts.parse_template(d / "v1.md")
+
+
+# ---- known_scripts (monday-brief) ------------------------------------------------------------------------------
+
+BRIEF_V1 = types.SimpleNamespace(id=None, name="brief", version=1, body="{{transcript}}", sha256="d" * 64,
+                                 checks=("known_scripts",))
+BENGALI = "ορθোগ্রাফία"
+
+
+def run_check(data):
+    return checks.run(("known_scripts",), "brief", data, "")
+
+
+def test_known_scripts_is_a_registered_check_name():
+    assert "known_scripts" in checks.NAMES
+
+
+def test_bengali_inside_a_greek_word_in_the_summary_is_an_error_naming_the_field():
+    errs = run_check(good("brief", summary=f"Η {BENGALI} του κειμένου"))
+    assert len(errs) == 1 and errs[0].startswith("summary") and "Bengali" in errs[0]
+
+
+def test_the_path_is_named_for_nested_fields():
+    c = good("brief")
+    c["decisions"][0]["text"] = "Vietnamese ở đây Việt"          # Latin with marks only: allowed
+    c["chapters"][0]["title"] = "Глава"
+    errs = run_check(c)
+    assert len(errs) == 1 and errs[0].startswith("chapters/0/title") and "Cyrillic" in errs[0]
+
+
+def test_quote_who_and_owner_are_exempt():
+    c = good("brief")
+    c["decisions"][0]["quote"] = BENGALI
+    c["action_items"][0]["owner"] = "Дмитрий"
+    c["disagreements"] = [{"topic": "t", "positions": [{"who": "李明", "stance": "s", "quote": BENGALI},
+                                                       {"who": None, "stance": "s", "quote": "q"}]}]
+    assert run_check(c) == []
+
+
+def test_greek_latin_digits_punctuation_and_symbols_pass():
+    ok = "Ελληνικά, English, ß é ñ ΐ ά, 12 € → 5 % — “x” (a/b) ✓ µ"
+    assert run_check(good("brief", summary=ok)) == []
+
+
+def test_chinese_and_japanese_are_flagged():
+    assert run_check(good("brief", summary="决定")) and run_check(good("brief", summary="ひらがな"))
+
+
+def reply_with_bengali():
+    return good("brief", summary=f"Η {BENGALI}")
+
+
+def genb(chat, mk_settings, segments=SEGS):
+    s = mk_settings()
+
+    async def go():
+        return await pipeline.generate_kind(chat, settings=s, kind="brief", template=BRIEF_V1, model="m",
+                                            context=100_000, segments=segments, language="Greek", title="T",
+                                            data_dir=None, timed_segments=[(i * 1000, t) for i, t in enumerate(segments)])
+    return asyncio.run(asyncio.wait_for(go(), 20))
+
+
+def test_the_error_goes_into_the_one_retry_and_a_clean_second_reply_has_no_warning(mk_settings):
+    chat = ScriptedChat(reply_with_bengali(), good("brief"))
+    r = genb(chat, mk_settings)
+    assert len(chat.calls) == 2 and "Bengali" in chat.calls[1]["messages"][-1]["content"]
+    assert r.attempts[0].errors and r.attempts[1].valid and "script_warnings" not in r.content
+
+
+def test_still_foreign_after_the_retry_stores_the_brief_with_script_warnings(mk_settings):
+    chat = ScriptedChat(reply_with_bengali(), reply_with_bengali())
+    r = genb(chat, mk_settings)
+    assert len(chat.calls) == 2 and r.content is not None
+    assert r.content["summary"].endswith(BENGALI) and r.content["script_warnings"] == ["summary"]
+    assert r.attempts[-1].valid                                         # not a schema failure
+    from details.llm import schemas
+    assert schemas.validate("brief", r.content, stored=True) == []
+
+
+def test_a_schema_error_after_the_retry_is_still_a_failure(mk_settings):
+    bad = reply_with_bengali()
+    bad["decisions"][0].pop("quote")
+    r = genb(ScriptedChat(bad, bad), mk_settings)
+    assert r.content is None and not r.attempts[-1].valid

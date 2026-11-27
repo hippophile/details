@@ -69,3 +69,77 @@ def test_quote_line_has_time_only_when_located_and_marker_replaces_unverified():
     lines = markdown.render_output("checklist", c).splitlines()
     assert lines[2:] == ["- [ ] a", "  > “x y” [1:02:03]", "- [ ] b", "  > “q”", "- [ ] c (quote not found)", "  > “z”",
                          "- [ ] d"]
+
+
+# ---- brief (monday-brief) ------------------------------------------------------------------------------------
+
+def stored_brief():
+    return {"schema_version": 1, "kind_of_recording": "meeting", "summary": "Συζήτηση για το deploy.", "links": "ok",
+            "chapters": [{"title": "Έναρξη", "quote": "Καλημέρα σε όλους", "verified": True, "at_ms": 0},
+                         {"title": "Deploy", "quote": "Θα κάνουμε deploy", "verified": True, "at_ms": 2161000}],
+            "decisions": [{"id": "d1", "text": "Deploy σε όλα τα υποκαταστήματα", "quote": "θα βγούμε παντού",
+                           "verified": True, "at_ms": 2102000, "status": "replaced", "replaces": [], "replaced_by": "d2"},
+                          {"id": "d2", "text": "Deploy πρώτα σε 2 υποκαταστήματα", "quote": "πρώτα σε δύο",
+                           "verified": True, "at_ms": 9670000, "status": "final", "replaces": ["d1"], "replaced_by": None}],
+            "disagreements": [{"id": "x1", "topic": "Budget", "settled_by": None, "positions": [
+                {"who": "Φίλιππος", "stance": "Πολύ ακριβό", "quote": "είναι ακριβό", "verified": True, "at_ms": 4323000},
+                {"who": None, "stance": "Αξίζει", "quote": "αξίζει", "verified": False}]}],
+            "action_items": [{"text": "Ετοιμασία documentation", "owner": "Νίκος", "due": "2026-12-01", "done": False,
+                              "quote": "Ο Νίκος θα ετοιμάσει το documentation", "verified": True, "at_ms": 10212000}],
+            "open_questions": [{"text": "Ποιο μοντέλο;", "quote": "ποιο μοντέλο θα χρησιμοποιήσουμε",
+                                "verified": True, "at_ms": 6055000}]}
+
+
+def test_brief_golden():
+    out = markdown.render_output("brief", stored_brief())
+    assert out == (GOLDEN / "brief.md").read_text()
+    assert markdown.render_output("brief", stored_brief()).encode() == out.encode()
+
+
+def test_a_lesson_says_so_in_every_empty_section():
+    c = stored_brief()
+    c.update(kind_of_recording="lesson", decisions=[], disagreements=[], action_items=[], open_questions=[], chapters=[],
+             links="skipped")
+    out = markdown.render_output("brief", c)
+    for line in ("Nothing was decided.", "No disagreements.", "Nothing to do.", "No open questions.", "No chapters."):
+        assert line in out, line
+    assert "changed from" not in out
+
+
+def test_a_settled_disagreement_names_the_decision_and_replaced_ones_are_not_listed_on_their_own():
+    c = stored_brief()
+    c["disagreements"][0]["settled_by"] = "d2"
+    out = markdown.render_output("brief", c)
+    assert "- Budget (settled by: Deploy πρώτα σε 2 υποκαταστήματα)" in out and "still open" not in out
+    decided = out.split("## Decided")[1].split("## Disagreed")[0]
+    assert decided.count("\n- ") == 1                       # only the final decision is a top-level bullet
+
+
+def test_a_chain_of_changes_nests_one_level_deeper_each_time():
+    c = stored_brief()
+    c["decisions"].append({"id": "d3", "text": "Μόνο 1", "quote": "μόνο ένα", "verified": True, "at_ms": 9999000,
+                           "status": "final", "replaces": ["d2"], "replaced_by": None})
+    c["decisions"][1].update(status="replaced", replaced_by="d3")
+    decided = markdown.render_output("brief", c).split("## Decided")[1].split("## Disagreed")[0]
+    assert "  - changed from: Deploy πρώτα σε 2 υποκαταστήματα [2:41:10]\n    - changed from: Deploy σε όλα" in decided
+
+
+def test_failed_links_and_script_warnings_are_said_in_the_export():
+    c = stored_brief()
+    c.update(links="failed", script_warnings=["summary"])
+    out = markdown.render_output("brief", c)
+    assert "Could not work out which decisions replaced earlier ones." in out
+    assert "Some text is in an unexpected alphabet." in out
+
+
+def test_model_text_cannot_inject_headings_into_a_brief():
+    c = stored_brief()
+    c["decisions"][1]["text"] = "x\n# fake"
+    c["summary"] = "a\n## fake"
+    out = markdown.render_output("brief", c)
+    assert "\n# fake" not in out and "\n## fake" not in out
+
+
+def test_group_puts_the_brief_first():
+    out = markdown.render_group([("tags", stored("tags")), ("brief", stored_brief())])
+    assert out.startswith("# Brief") and out.index("# Brief") < out.index("# Tags")

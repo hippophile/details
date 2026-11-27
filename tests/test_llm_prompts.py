@@ -98,3 +98,12 @@ def test_language_follows_the_run_and_the_english_switch():
 def test_auto_language_uses_greek_letter_share():
     assert prompts.language_name(None, "Καλημέρα σε όλους, ξεκινάμε τη συνάντηση. ok") == "Greek"
     assert prompts.language_name("auto", "We will deploy on Friday, with a few Ελληνικά words") == "English"
+
+
+def test_shipped_brief_prompt_lists_known_scripts_and_the_not_a_meeting_rule():
+    t = prompts.parse_template(REPO_ROOT / "prompts" / "brief" / "v1.md")
+    assert (t.kind, t.version, t.output_schema, t.checks) == ("brief", 1, "brief.v1", ("known_scripts",))
+    body = t.body.lower()
+    for needle in ("kind_of_recording", "lesson", "empty list", "agreed", "verbatim", "{{recording_title}}"):
+        assert needle in body, needle
+    assert KINDS[0] == "brief"

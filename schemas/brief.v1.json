@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "brief",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "kind_of_recording": {
+      "enum": [
+        "meeting",
+        "lesson",
+        "interview",
+        "other"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "title",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "final",
+              "replaced"
+            ]
+          },
+          "replaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "replaced_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "disagreements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "minLength": 1
+          },
+          "positions": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "properties": {
+                "who": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "stance": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "verified": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "who",
+                "stance",
+                "quote"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "settled_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "topic",
+          "positions"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "owner",
+          "due",
+          "done",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "links": {
+      "enum": [
+        "ok",
+        "skipped",
+        "failed"
+      ]
+    },
+    "script_warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind_of_recording",
+    "summary",
+    "chapters",
+    "decisions",
+    "disagreements",
+    "action_items",
+    "open_questions"
+  ],
+  "additionalProperties": false
+}

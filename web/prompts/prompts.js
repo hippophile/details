@@ -18,7 +18,7 @@
 
   // ---- page ---------------------------------------------------------------------------------------------
   const $ = (id) => document.getElementById(id);
-  const TITLES = { debrief: "Debrief", notes: "Notes", checklist: "Checklist", tags: "Tags" };
+  const TITLES = { brief: "Brief", debrief: "Debrief", notes: "Notes", checklist: "Checklist", tags: "Tags" };
   let kinds = [], kind = "", shown = null, busy = false;
 
   function el(tag, props, text) {

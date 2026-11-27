@@ -9,7 +9,7 @@ from fakes.lmstudio import FakeLMStudio
 from jobs_helpers import wait_status, wait_until
 from llm_helpers import FULL, SEGS, analysis_env, good, good_responder, seed_run, sync_prompts
 
-KINDS = ["debrief", "notes", "checklist", "tags"]
+KINDS = ["brief", "debrief", "notes", "checklist", "tags"]
 
 
 def go(fn, timeout=40):
@@ -56,9 +56,9 @@ def test_end_to_end_all_kinds_with_load_and_unload(db, db_url, mk_settings):
     gid = go(body)
     rows = runs(db, gid)
     assert [(r[0], r[1], r[2]) for r in rows] == [(k, "done", True) for k in KINDS]
-    assert db.execute("SELECT count(*) FROM output").fetchone()[0] == 4
+    assert db.execute("SELECT count(*) FROM output").fetchone()[0] == 5
     assert [c[0] for c in fake.calls] == ["load", "unload"] and fake.calls[0][2] == identifier_for("gemma-cheap")
-    assert len(fake.requests) == 4 and {r["model"] for r in fake.requests} == {identifier_for("gemma-cheap")}
+    assert len(fake.requests) == 5 and {r["model"] for r in fake.requests} == {identifier_for("gemma-cheap")}
     r = rows[0]
     assert r[5] > 0 and r[6] > 0 and r[7] >= 0 and r[8]["text"] and "Greek" in r[9]
     assert r[10] == hashlib.sha256("\n".join(SEGS).encode()).hexdigest() and r[11] == "gemma-cheap"

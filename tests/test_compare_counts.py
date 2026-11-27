@@ -33,7 +33,7 @@ def test_tags_counts():
     assert output_counts("tags", c) == {"tags": 2, "unverified": 1}
 
 
-@pytest.mark.parametrize("kind", ["debrief", "notes", "checklist", "tags"])
+@pytest.mark.parametrize("kind", ["brief", "debrief", "notes", "checklist", "tags"])
 def test_empty_or_odd_content_never_raises(kind):
     counts = output_counts(kind, {})
     assert counts["unverified"] == 0 and all(v == 0 for v in counts.values())
@@ -46,3 +46,16 @@ def test_checklist_with_due_counts_items_that_have_a_due_date():
     c["items"][2]["due"] = "2026-12-01"
     assert output_counts("checklist", c)["with_due"] == 2
     assert output_counts("checklist", good_checklist(3, 1))["with_due"] == 0
+
+
+def test_brief_counts_final_replaced_open_settled_and_unverified():
+    c = good("brief")
+    c["decisions"] = [{"id": "d1", "text": "a", "quote": "q", "status": "replaced", "verified": True},
+                      {"id": "d2", "text": "b", "quote": "q", "status": "final", "verified": False},
+                      {"id": "d3", "text": "c", "quote": "q", "status": "final"}]
+    pos = lambda v: {"who": None, "stance": "s", "quote": "q", "verified": v}
+    c["disagreements"] = [{"id": "x1", "topic": "t", "settled_by": "d3", "positions": [pos(True), pos(False)]},
+                          {"id": "x2", "topic": "u", "settled_by": None, "positions": [pos(True), pos(True)]}]
+    assert output_counts("brief", c) == {
+        "decisions_final": 2, "decisions_replaced": 1, "disagreements_open": 1, "disagreements_settled": 1,
+        "action_items": 1, "open_questions": 1, "chapters": 2, "unverified": 2}

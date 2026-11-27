@@ -226,3 +226,62 @@ def test_group_markdown_of_a_failed_analysis_is_409_with_the_error(db, db_url, m
         r = await c.get(f"/api/analyses/{gids['queued']}/markdown")
         assert r.status == 404 and (await r.json())["error"] == "this analysis has no outputs yet"
     api(db_url, mk_settings, body)
+
+
+# ---- brief (monday-brief) ------------------------------------------------------------------------------------
+
+def brief_responder(body):
+    from llm_helpers import kind_of
+    k = kind_of(body)
+    if k == "brief_link":
+        return {"decisions": [{"id": "d2", "replaces": ["d1"]}], "disagreements": []}
+    c = good("brief")
+    c["decisions"] = [{"text": "Documentation", "quote": "ετοιμάσει το documentation"},
+                      {"text": "Deploy", "quote": "Θα κάνουμε deploy στις 12 Νοεμβρίου"}]
+    return c if k == "brief" else good_responder(body)
+
+
+def test_brief_is_accepted_ordered_linked_and_located_through_the_api(db, db_url, mk_settings):
+    sync_prompts(db_url)
+    _, run_id = seed_run(db, mk_settings(db_url))
+    fake = FakeLMStudio()
+    fake.responder = brief_responder
+
+    async def body(c, s):
+        r = await post(c, run_id, kinds=["tags", "brief"])
+        assert r.status == 202
+        g = await finish(c, (await r.json())["group_id"])
+        assert g["status"] == "done"
+        k = next(x for x in g["kinds"] if x["kind"] == "brief")
+        d = k["output"]["content"]["decisions"]
+        assert [(x["id"], x["text"], x["status"]) for x in d] == [("d1", "Deploy", "replaced"), ("d2", "Documentation", "final")]
+        assert [x["at_ms"] for x in d] == [1000, 2000]                      # located when read, by the plain segments
+        assert k["output"]["content"]["links"] == "ok" and k["attempts"] == 1 and k["schema_valid"] is True
+        assert k["tokens_in"] > 0 and (k["verified"], k["unverified"]) == (6, 0)
+        md = await (await c.get(f"/api/outputs/{k['output']['id']}/markdown")).text()
+        assert md.startswith("# Brief") and "changed from: Deploy [00:01]" in md
+        grp = await (await c.get(f"/api/analyses/{g['group_id']}/markdown")).text()
+        assert grp.startswith("# Brief")
+        assert (await c.patch(f"/api/outputs/{k['output']['id']}/items/0", json={"done": True})).status == 409
+    api(db_url, mk_settings, body, fake=fake)
+    p = db.execute("SELECT params->'link'->>'status', params->'link'->>'prompt', tokens_in FROM analysis_run "
+                   "WHERE kind='brief'").fetchone()
+    assert p[0] == "ok" and "d1" in p[1] and p[2] > 0
+    assert db.execute("SELECT count(*) FROM analysis_run WHERE kind='brief_link'").fetchone()[0] == 0   # not its own row
+
+
+def test_a_failed_link_still_shows_the_brief_as_valid(db, db_url, mk_settings):
+    sync_prompts(db_url)
+    _, run_id = seed_run(db, mk_settings(db_url))
+    fake = FakeLMStudio()
+    fake.responder = lambda b: {"decisions": [{"id": "d1", "replaces": ["d2"]}], "disagreements": []} \
+        if __import__("llm_helpers").kind_of(b) == "brief_link" else brief_responder(b)
+
+    async def body(c, s):
+        g = await finish(c, (await (await post(c, run_id, kinds=["brief"])).json())["group_id"])
+        k = g["kinds"][0]
+        assert g["status"] == "done" and k["status"] == "done" and k["schema_valid"] is True and k["attempts"] == 1
+        assert k["output"]["content"]["links"] == "failed"
+        assert {x["status"] for x in k["output"]["content"]["decisions"]} == {"final"}
+    api(db_url, mk_settings, body, fake=fake)
+    assert db.execute("SELECT params->'link'->>'status' FROM analysis_run WHERE kind='brief'").fetchone()[0] == "failed"
