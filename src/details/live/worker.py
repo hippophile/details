@@ -10,9 +10,9 @@ import importlib, json, os, sys, tempfile, time, wave
 import numpy as np
 
 from ..engines import get_engine
+from ..stt_clean import JUNK      # known Whisper hallucinations on silence (as in v1)
 
 SR = 16000
-JUNK = ("υπότιτλοι", "υποτιτλοι", "authorwave", "subtitles")      # known Whisper hallucinations on silence (as in v1)
 
 
 def _direct_transcriber(repo, language, prompt):

@@ -46,6 +46,7 @@ log_max_lines = 5000              # job log cap (lines); then one "log truncated
 
 [stt]
 window_s = 30                     # audio is transcribed in windows of this many seconds (checkpoint + resume unit)
+overlap_s = 3                    # extra seconds decoded on each side of a window so words at a join are not cut (+~20% decode time, estimate)
 vocab_hint = "Συνάντηση για AI adoption, agents, local LLM, RAG, embeddings, PostgreSQL, pgvector, MCP, AI Act, GDPR, Azure OpenAI, Docker, CI/CD, GitHub Actions, pull request, sprint, .NET, Blazor, KPIs, Jira, backlog."
 plugins = ""                      # extra engine modules for the worker (comma-separated)
 

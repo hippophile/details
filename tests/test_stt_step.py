@@ -46,6 +46,7 @@ def test_step_stores_segments_postfixed_with_timing_and_raw(db, db_url, mk_setti
     status, error, text, raw, wall, audio, rtf, lang = row(db, run_id)
     assert status == "done" and error is None and lang == "el"
     assert text == "w0 Τι κάνεις; w1 Τι κάνεις; w2 Τι κάνεις; w3 Τι κάνεις; w4 Τι κάνεις;"
+    assert raw["cleaned"] == {"junk": 0, "loops": 0, "capped": 0, "trimmed": 0, "join_dupes": 0}
     assert "Τι κάνεις?" in json.dumps(raw, ensure_ascii=False) and "Τι κάνεις;" not in json.dumps(raw, ensure_ascii=False)
     assert audio == 5000 and wall > 0 and rtf == pytest.approx(5.0 / (wall / 1000), rel=0.01)
     segs = db.execute("SELECT idx, start_ms, end_ms, text FROM transcript_segment WHERE stt_run_id=%s ORDER BY idx",
@@ -53,6 +54,44 @@ def test_step_stores_segments_postfixed_with_timing_and_raw(db, db_url, mk_setti
     assert [x[0] for x in segs] == [0, 1, 2, 3, 4] and segs[1][1:3] == (1000, 2000) and segs[1][3] == "w1 Τι κάνεις;"
     found = list(data_dir.rglob("segments.jsonl"))       # the checkpoint lives in step_dir and nowhere else
     assert found == [data_dir / "jobs" / jid / "stt_transcribe" / "segments.jsonl"]
+
+
+def test_junk_segment_is_not_stored_and_counted_in_raw_cleaned(db, db_url, mk_settings, tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path, junk=1)      # the fake says "Υπότιτλοι AUTHORWAVE" for second 1
+    s = mk_settings(db_url)
+    rid = rec(db, s, seconds=3)
+
+    async def go():
+        async with env(db_url, mk_settings) as e:
+            steps_stt.bind(e.pool)
+            run_id, jid = await start(e, rid)
+            await wait_status(e.svc, jid, "done")
+            return run_id
+    run_id = run(go)
+    status, _, text, raw, *_ = row(db, run_id)
+    assert status == "done" and text == "w0 Τι κάνεις; w2 Τι κάνεις;" and raw["cleaned"]["junk"] == 1
+    assert db.execute("SELECT count(*) FROM transcript_segment WHERE stt_run_id=%s", (run_id,)).fetchone()[0] == 2
+
+
+def test_run_settings_carry_overlap_and_a_run_without_it_gets_a_spec_with_zero(db, db_url, mk_settings, tmp_path,
+                                                                                monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path)
+    s = mk_settings(db_url)
+    rid = rec(db, s, seconds=2)
+    from stt_helpers import insert_run
+    old = insert_run(db, rid, status="queued", engine="fake", model_id="whisper-turbo",
+                     settings=json.dumps({"language": "el", "window_s": 1, "initial_prompt": None}))
+
+    async def go():
+        async with env(db_url, mk_settings) as e:       # the repo config says overlap_s = 3
+            steps_stt.bind(e.pool)
+            new, _ = await start(e, rid)
+            jid = await e.svc.enqueue("stt", rid, [{"name": "stt_transcribe", "params": {"stt_run_id": old}}])
+            await wait_status(e.svc, jid, "done")
+            return new, jid, e.data_dir
+    new, jid, data_dir = run(go)
+    assert db.execute("SELECT settings FROM stt_run WHERE id=%s", (new,)).fetchone()[0]["overlap_s"] == 3
+    assert json.loads((data_dir / "jobs" / jid / "stt_transcribe" / "spec.json").read_text())["overlap_s"] == 0
 
 
 def test_engine_receives_run_settings(db, db_url, mk_settings, tmp_path, monkeypatch):
@@ -102,7 +141,7 @@ def test_child_death_fails_run_keeps_checkpoint_and_no_segments(db, db_url, mk_s
     rid = rec(db, s, seconds=5)
 
     async def go():
-        async with env(db_url, mk_settings) as e:
+        async with env(db_url, mk_settings, DETAILS_STT_OVERLAP_S="0") as e:
             steps_stt.bind(e.pool)
             run_id, jid = await start(e, rid)
             await wait_status(e.svc, jid, "failed")
@@ -122,7 +161,7 @@ def test_retry_resumes_the_same_job(db, db_url, mk_settings, tmp_path, monkeypat
     rid = rec(db, s, seconds=4)
 
     async def go():
-        async with env(db_url, mk_settings) as e:
+        async with env(db_url, mk_settings, DETAILS_STT_OVERLAP_S="0") as e:
             steps_stt.bind(e.pool)
             run_id, jid = await start(e, rid)
             await wait_status(e.svc, jid, "failed")

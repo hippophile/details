@@ -73,7 +73,8 @@ async def start_run(pool, jobs, registry, settings, recording_id, model_id, *, l
         raise StartError(404, "recording not found")
     prompt = (initial_prompt or settings.stt.vocab_hint) if vocab_hint else None
     run_settings = {"language": language, "vocab_hint": bool(vocab_hint), "initial_prompt": prompt,
-                    "window_s": window_s or settings.stt.window_s, "condition_on_previous_text": False}
+                    "window_s": window_s or settings.stt.window_s, "overlap_s": settings.stt.overlap_s,
+                    "condition_on_previous_text": False}
     async with pool.connection() as c:
         cur = await c.execute("SELECT 1 FROM recording WHERE id=%s AND deleted_at IS NULL", (recording_id,))
         if await cur.fetchone() is None:

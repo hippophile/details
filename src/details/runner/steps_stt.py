@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 
 from ..engines.worker import read_done, window_plan
 from ..services import library, stt_runs
+from ..stt_clean import clean
 from ..services.models import load_registry, resolve_path
 from .steps import StepError, steps
 
@@ -41,6 +42,7 @@ async def stt_transcribe(ctx):
                         "WHERE id=%s", (run_id,))
     spec = {"engine": row["engine"], "model": {"repo": model.repo, **model.options}, "audio_path": str(found[0]),
             "duration_s": audio_ms / 1000, "window_s": rs.get("window_s") or ctx.settings.stt.window_s,
+            "overlap_s": rs.get("overlap_s", 0),      # a run stored before overlap existed keeps hard windows
             "settings": {"language": rs.get("language", "el"), "initial_prompt": rs.get("initial_prompt"),
                          "condition_on_previous_text": False},
             "out_dir": str(ctx.step_dir),
@@ -67,17 +69,21 @@ async def stt_transcribe(ctx):
     if missing:
         raise StepError(f"worker finished without windows {missing[:5]}")
     wall_ms = max(1, round((time.monotonic() - t0) * 1000))
-    segs, texts, lang_seen = [], [], None
+    got, lang_seen = [], None
     for i, _, _ in plan:
         w = done[i]
         lang = w.get("language") or (rs.get("language") if rs.get("language") != "auto" else None)
         lang_seen = lang_seen or lang
         for s in w["segments"]:
-            t = stt_runs.greek_postfix(s["text"]) if lang == "el" else s["text"]
-            segs.append((len(segs), s["start_ms"], s["end_ms"], t, s.get("avg_logprob"), s.get("no_speech_prob"),
-                         Jsonb(s["words"]) if s.get("words") else None))
-            texts.append(t.strip())
-    raw = {"windows": [done[i] for i, _, _ in plan]}
+            got.append({**s, "text": stt_runs.greek_postfix(s["text"]) if lang == "el" else s["text"]})
+    got, counts = clean(got, audio_ms, spec["window_s"], spec["overlap_s"])
+    segs, texts = [], []
+    for s in got:
+        t = s["text"]
+        segs.append((len(segs), s["start_ms"], s["end_ms"], t, s.get("avg_logprob"), s.get("no_speech_prob"),
+                     Jsonb(s["words"]) if s.get("words") else None))
+        texts.append(t.strip())
+    raw = {"windows": [done[i] for i, _, _ in plan], "cleaned": counts}
     async with pool.connection() as c:
         async with c.transaction():
             await c.execute("DELETE FROM transcript_segment WHERE stt_run_id=%s", (run_id,))

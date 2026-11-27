@@ -94,3 +94,40 @@ def test_unknown_engine_exits_nonzero_with_a_message(tmp_path, monkeypatch):
     p, _ = spec(tmp_path, engine="nope")
     r = run_worker(p)
     assert r.returncode != 0 and "nope" in r.stderr
+
+
+def segs_text(path):
+    return [x["text"] for g in lines(path) for x in g["segments"]]
+
+
+def test_overlap_windows_asked_with_extra_audio_clipped_to_the_recording(tmp_path, monkeypatch):
+    calls = fake_worker_env(monkeypatch, tmp_path)
+    p, _ = spec(tmp_path, seconds=3, window_s=1, overlap_s=0.5)
+    assert run_worker(p).returncode == 0
+    c = [json.loads(x) for x in calls.read_text().splitlines()]
+    assert [(x["start_s"], x["end_s"]) for x in c] == [(0, 1.5), (0.5, 2.5), (1.5, 3)]
+
+
+def test_overlap_keeps_each_segment_once_in_the_window_that_owns_its_midpoint(tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path)
+    p, out = spec(tmp_path, seconds=3, window_s=1, overlap_s=0.5)
+    assert run_worker(p).returncode == 0
+    assert [[x["text"] for x in g["segments"]] for g in lines(out / "segments.jsonl")] == \
+        [["w0 Τι κάνεις?"], ["w1 Τι κάνεις?"], ["w2 Τι κάνεις?"]]
+
+
+def test_segment_straddling_a_join_is_stored_once_by_the_window_holding_its_midpoint(tmp_path, monkeypatch):
+    fake_worker_env(monkeypatch, tmp_path)
+    p, out = spec(tmp_path, seconds=3, window_s=1.5, overlap_s=0.5)      # w1 is 1 s to 2 s, the join is at 1.5 s
+    assert run_worker(p).returncode == 0
+    got = lines(out / "segments.jsonl")
+    assert [[x["text"][:2] for x in g["segments"]] for g in got] == [["w0"], ["w1", "w2"]]
+
+
+def test_spec_without_overlap_s_gives_the_old_window_calls(tmp_path, monkeypatch):
+    calls = fake_worker_env(monkeypatch, tmp_path)
+    p, out = spec(tmp_path, seconds=3, window_s=1)
+    assert run_worker(p).returncode == 0
+    c = [json.loads(x) for x in calls.read_text().splitlines()]
+    assert [(x["start_s"], x["end_s"]) for x in c] == [(0, 1), (1, 2), (2, 3)]
+    assert len(segs_text(out / "segments.jsonl")) == 3

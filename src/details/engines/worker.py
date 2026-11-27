@@ -1,7 +1,9 @@
 """STT worker child: `python -m details.engines.worker <spec.json>`.
-Spec: engine, model, audio_path, duration_s, window_s, settings, out_dir, plugins. Appends one JSON line per finished
+Spec: engine, model, audio_path, duration_s, window_s, overlap_s (optional, 0 = none), settings, out_dir, plugins. Appends one JSON line per finished
 window to <out_dir>/segments.jsonl (flush + fsync), skips windows already there on resume, then writes
-worker.done.json (NOT done.json: that name is the runner's step marker). stdout is the heartbeat: one line at model
+worker.done.json (NOT done.json: that name is the runner's step marker). With overlap_s a window is decoded
+over [a - overlap, b + overlap] (clipped to the audio) and keeps the segments whose midpoint lies in [a, b)
+(the last window keeps everything from a on). stdout is the heartbeat: one line at model
 load ("loaded"), one per window ("window i/n")."""
 import importlib, json, math, os, pathlib, sys
 
@@ -11,6 +13,11 @@ from . import get_engine
 def window_plan(duration_s, window_s):
     n = max(1, math.ceil(duration_s / window_s - 1e-9))
     return [(i, i * window_s, min((i + 1) * window_s, duration_s)) for i in range(n)]
+
+
+def own_segments(segs, a, b, last):
+    """Segments whose midpoint is in [a, b) seconds (open end for the last window): each is kept by exactly one window."""
+    return [s for s in segs if a * 1000 <= (s.start_ms + s.end_ms) / 2 and (last or (s.start_ms + s.end_ms) / 2 < b * 1000)]
 
 
 def read_done(path):
@@ -42,6 +49,7 @@ def main(argv):
     ck = out / "segments.jsonl"
     done = read_done(ck)
     plan = window_plan(spec["duration_s"], spec["window_s"])
+    ov = spec.get("overlap_s") or 0
     eng = cls(spec["model"])
     eng.load()
     print(f"loaded {spec['engine']}", flush=True)
@@ -50,7 +58,10 @@ def main(argv):
     with open(ck, "a", encoding="utf-8") as f:
         for i, a, b in plan:
             if i not in done:
-                segs = eng.transcribe_window(spec["audio_path"], a, b, spec["settings"])
+                segs = eng.transcribe_window(spec["audio_path"], max(0, a - ov), min(spec["duration_s"], b + ov),
+                                             spec["settings"])
+                if ov:
+                    segs = own_segments(segs, a, b, i == len(plan) - 1)
                 rec = {"idx": i, "start_s": a, "end_s": b, "language": getattr(eng, "language", None),
                        "segments": [s.to_dict() for s in segs]}
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")

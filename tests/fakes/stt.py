@@ -1,13 +1,15 @@
 """Fake STT engine for the worker child process. Registered as "fake" on import (and also as "mlx_whisper" when
 FAKE_STT_OVERRIDE=1, so the API/step tests run the real pipeline without a GPU). Imported by the worker through
-DETAILS_STT_PLUGINS=fakes.stt. Knobs (env, inherited by the child):
+DETAILS_STT_PLUGINS=fakes.stt. It says one segment per whole second of the asked range [start_s, end_s)
+(text "w<second> Τι κάνεις?"), so overlap windows return what they were asked for. Knobs (env, inherited by the child):
   FAKE_STT_CALLS=<file>      append one JSON line per transcribe_window call {start_s, end_s, settings}
   FAKE_STT_DELAY=<seconds>   sleep per window
   FAKE_STT_DIE_AT=<start_s>  os._exit(137) when asked to transcribe a window starting at or after this second
   FAKE_STT_PIDFILE=<file>    write the child pid at construction
+  FAKE_STT_JUNK=<second>     the slice of that second says "Υπότιτλοι AUTHORWAVE" (a Whisper hallucination)
   FAKE_STT_NAN=1             avg_logprob is NaN (mlx-whisper does this on a lone "!" in silence)
   FAKE_STT_ENVFILE=<file>    at construction: dump which of the 3 Hugging Face token variables are present (never values)"""
-import json, os, time
+import json, math, os, time
 
 from details.engines import ENGINES
 from details.engines.base import Segment
@@ -39,8 +41,10 @@ class FakeSttEngine:
             os._exit(137)
         self.language = settings.get("language") if settings.get("language") != "auto" else "el"
         lp = float("nan") if os.environ.get("FAKE_STT_NAN") == "1" else -0.2
-        return [Segment(int(start_s * 1000), int(end_s * 1000), f"w{int(start_s)} Τι κάνεις?",
-                        avg_logprob=lp, no_speech_prob=0.01)]
+        junk = os.environ.get("FAKE_STT_JUNK")
+        return [Segment(round(max(t, start_s) * 1000), round(min(t + 1, end_s) * 1000),
+                        "Υπότιτλοι AUTHORWAVE" if junk is not None and t == int(junk) else f"w{t} Τι κάνεις?",
+                        avg_logprob=lp, no_speech_prob=0.01) for t in range(int(start_s), math.ceil(end_s))]
 
 
 ENGINES["fake"] = FakeSttEngine

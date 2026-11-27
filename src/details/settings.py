@@ -79,6 +79,7 @@ class Stt:
     window_s: int
     vocab_hint: str    # initial_prompt used when a run asks for the vocabulary hint
     plugins: str       # comma-separated modules the worker imports to register extra engines (tests, v2.1)
+    overlap_s: float = 0   # extra audio decoded on each side of a window; a segment is kept by the window holding its midpoint
 
 
 @dataclass(frozen=True)
@@ -247,6 +248,8 @@ def _v_import(s):
 def _v_stt(s):
     if s.window_s < 1:
         raise ValueError("stt.window_s: must be >= 1")
+    if s.overlap_s < 0:
+        raise ValueError("stt.overlap_s: must be >= 0")
 
 
 def _v_llm(s):

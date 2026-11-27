@@ -27,17 +27,17 @@ The system SHALL clean a finished run's segments before storing them: drop segme
 
 ### Requirement: Overlapping transcription windows
 
-The system SHALL decode each window with `[stt] overlap_s` seconds of extra audio on each side (clipped to the recording) and keep only the segments whose midpoint lies inside the window's own range, so a segment at a join is stored exactly once.
+The system SHALL store `overlap_s` (from `[stt] overlap_s`) in the run settings when a run starts, and SHALL decode each window with that many seconds of extra audio on each side (clipped to the recording) and keep only the segments whose midpoint lies inside the window's own range, so a segment at a join is stored exactly once.
 
 #### Scenario: Segment at a join is stored once
 
 - **GIVEN** `window_s = 30` and `overlap_s = 3`
 - **WHEN** window 1 is transcribed
 - **THEN** the engine is asked for 27 s to 63 s
-- **AND** a segment from 29 s to 32 s is stored by window 0 only
+- **AND** a segment from 28 s to 31 s (midpoint 29.5 s) is stored by window 0 only
 
-#### Scenario: Old job resumes unchanged
+#### Scenario: Old run resumes unchanged
 
-- **GIVEN** a job whose saved spec has no `overlap_s`
+- **GIVEN** a run whose stored settings have no `overlap_s`
 - **WHEN** it resumes
 - **THEN** windows are decoded without overlap, as before

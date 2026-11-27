@@ -39,6 +39,7 @@ cancel_grace_s = 5
 log_max_lines = 5000
 [stt]
 window_s = 30
+overlap_s = 3
 vocab_hint = "hint"
 plugins = ""
 [llm]
@@ -140,6 +141,14 @@ def test_stt_section_defaults_and_validation(cfg):
     assert s.stt.window_s == 30 and s.stt.plugins == ""
     with pytest.raises(SettingsError, match=r"stt\.window_s"):
         load(cfg, env={"DETAILS_STT_WINDOW_S": "0"})
+
+
+def test_stt_overlap_s_loads_env_override_and_negative_rejected(cfg):
+    assert load(cfg).stt.overlap_s == 3
+    assert load(cfg, env={"DETAILS_STT_OVERLAP_S": "0"}).stt.overlap_s == 0
+    assert load(cfg, env={"DETAILS_STT_OVERLAP_S": "1.5"}).stt.overlap_s == 1.5
+    with pytest.raises(SettingsError, match=r"stt\.overlap_s"):
+        load(cfg, env={"DETAILS_STT_OVERLAP_S": "-1"})
 
 
 def test_llm_section_defaults_env_override_and_validation(cfg):
