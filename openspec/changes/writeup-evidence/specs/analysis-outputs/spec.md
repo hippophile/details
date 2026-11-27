@@ -49,7 +49,7 @@ The system SHALL number analysis groups by their position among all analysis gro
 
 ### Requirement: Failed write-ups can be retried from the Write-up card
 
-The system SHALL show the stored error and a Retry control for a failed or cancelled write-up kind, and `GET /api/analyses/{group_id}/markdown` SHALL answer 409 with that error when the group has no outputs because it failed.
+The system SHALL show the stored error for a failed or cancelled write-up kind and a Retry control for a failed one, and `GET /api/analyses/{group_id}/markdown` SHALL answer 409 with that error when the group has no outputs because it failed.
 
 #### Scenario: Out of memory
 

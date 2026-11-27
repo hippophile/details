@@ -32,3 +32,10 @@ Write-up, Runs, Who talked, Transcript. The transcript is the last card and is a
 ## Caveats
 - Whisper punctuation is unreliable, so paragraph breaks are approximate; Lines view remains for exact work.
 - The default view of the transcript changes for the owner; one click returns to Lines and it is remembered.
+
+## Notes from the independent audit (2026-11-27)
+- `tests/e2e/test_diar_brave.py:118` reads `#spkReason` innerText; text inside a closed `<details>` is not rendered,
+  so that e2e assertion must be updated (keep `#spkReason` as the one-line notice, put the steps in the disclosure).
+- Paragraph spans need their own playing-highlight CSS rule (`.seg.on` only styles rows); `segEls` must hold the spans.
+- With New run / AI model below the transcript, starting the first run means scrolling past it: when a recording has
+  no done run, those two cards stay above the transcript.

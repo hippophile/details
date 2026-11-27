@@ -95,3 +95,27 @@ that a quote supports its claim, one-click transcript + speakers + brief.
 - A 3-hour meeting is about 140k tokens in (estimate from 11.4k per 15 min measured): many chunk calls, tens of
   minutes on this Mac. Not measured.
 - Chapters come from the model per chunk; long meetings may get too many or uneven chapters.
+
+## Corrections after the independent audit (2026-11-27)
+- **Segments with times.** `generate_kind` today receives text lines only. The step also loads the plain segments as
+  `(start_ms, text)` and passes them as a new optional argument `timed_segments`; `quotes.locate` always runs on
+  these plain segments (never on labelled `Name:` lines). Ordering and ids (decision 3) and the link input times
+  (decision 4) use them. Unlocated items keep model order after located ones.
+- **How the link call is stored.** It is NOT a separate attempt: `_persist` chains attempts with `retry_of` and the
+  page judges the kind by the last one, so a failed link would hide a good brief. The link call(s) are folded into
+  the kind's aggregate attempt like map-reduce calls: tokens and wall time summed; link prompt, reply and errors kept
+  in `params.link` (visible in Inspect). In single-pass mode the single attempt becomes such an aggregate when a link
+  ran. Link token limit: `[llm] max_tokens_brief_link = 800` (settings + config; validated like the others).
+- **Errors.** Decision 5 catches `LLMError` and link validation failure only. `StreamCancelled` propagates, so
+  Cancel stores nothing.
+- **known_scripts never loses a brief over a name.** `who` and `owner` are exempt (a real name may be Cyrillic or
+  Chinese). If the check still fails after the retry for other fields, the brief is stored with the offending
+  strings kept and `script_warnings: [field paths]`; the page shows "Some text is in an unexpected alphabet."
+  (The check is therefore not a schema-validity failure for `brief`; for any later prompt using it, the same rule.)
+- **Link prompt is code, not a versioned prompt** (like `REDUCE_PROMPT` in `pipeline.py`).
+- **Existing tests that must be edited, not only added** (measured by the audit): `test_llm_schemas.py:9`
+  (`test_four_kinds_only`), `test_prompts_api.py:80,126`, `test_llm_page.py:12`, the inline TOML in
+  `test_settings.py`, and `for kind in schemas.KINDS` loops that need a `brief` fixture (`test_llm_pipeline.py:22`).
+- **Files the decision list missed:** chip in `web/analyse/index.html`; `compare.js` `TABS` and its per-kind branches;
+  `comparison.py` loops `KINDS`, so its response gains a `brief` key.
+- **Cost:** the default analysis now runs five kinds instead of four: slower. Time measured in task 3.1.

@@ -31,7 +31,7 @@ The system SHALL store, for an Auto run, the language of the most windows and th
 
 - **GIVEN** a done Auto run whose windows were 18 `el` and 13 `en`
 - **WHEN** the runs list is requested
-- **THEN** its `language` is `el`, `raw.languages` is `{"el": 18, "en": 13}` and its label contains `Auto`
+- **THEN** its `language` is `el`, its `languages` is `{"el": 18, "en": 13}` and its label contains `Auto`
 
 #### Scenario: Two settings, two labels
 
@@ -41,10 +41,16 @@ The system SHALL store, for an Auto run, the language of the most windows and th
 
 ### Requirement: Analyse opens on the accurate run
 
-The system SHALL return `model_role` on each run and the Analyse page SHALL open the newest done, non-live-preview run whose role is `accurate`, falling back to the first done run.
+The system SHALL return `model_role` and `cleaned` on each run, and the Analyse page SHALL open the newest done, non-live-preview run that is `accurate` and cleaned, else the newest cleaned run, else the first done run.
 
 #### Scenario: Accurate run preferred
 
-- **GIVEN** a newer done `fast` run and an older done `accurate` run
+- **GIVEN** a newer done cleaned `fast` run and an older done cleaned `accurate` run
 - **WHEN** the Analyse page loads
 - **THEN** the `accurate` run is selected
+
+#### Scenario: Old uncleaned accurate run is not preferred
+
+- **GIVEN** an older done `accurate` run without cleaning and a newer done cleaned `fast` run
+- **WHEN** the Analyse page loads
+- **THEN** the cleaned `fast` run is selected

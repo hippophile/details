@@ -20,8 +20,8 @@ Nothing unarchived. Implement after `stt-languages` only to avoid edit conflicts
    (segments joined by one space, with an offset → segment map) and set `at_ms` to the start of the segment where
    the match begins. Not found → no `at_ms`. A quote spanning two segments resolves to the first. Runs without
    segments (v1 imports) get no `at_ms`. Nothing is stored; schemas are unchanged; old write-ups get it too.
-2. **API.** `GET /api/analyses/{group_id}` and `GET /api/stt-runs/{id}/analyses` return each output's `content` with
-   `at_ms` added (one segments query per transcript run, not per item).
+2. **API.** `GET /api/analyses/{group_id}` returns each output's `content` with `at_ms` added (one segments query
+   per transcript run, not per item). See Corrections for the Markdown routes.
 3. **Page.** A quote with `at_ms` is a button `▶ mm:ss “quote”` (keyboard: Enter/Space) that calls the existing
    `AnalyseApi.seekTo` on the page player. Without `at_ms` it stays plain text. Tag pills with `at_ms` seek on click.
 4. **Honest wording (M9).** The count line is always shown for a kind that has quotes: "N quotes found in the
@@ -53,3 +53,14 @@ Nothing unarchived. Implement after `stt-languages` only to avoid edit conflicts
 - A short quote that occurs many times ("Ωραία!") jumps to its **first** occurrence, which may be the wrong one.
 - "Found" is still not "supports the claim". Checking support needs a second model pass (backlog, not here).
 - Labelled (speaker) analyses: a quote that includes the `Name:` prefix will not be located.
+
+## Corrections after the independent audit (2026-11-27)
+- **Which routes get `at_ms`.** `GET /api/stt-runs/{id}/analyses` returns no content (`list_` drops `kinds`), so only
+  `GET /api/analyses/{group_id}` adds `at_ms`. Both Markdown routes (`/api/outputs/{id}/markdown` and
+  `/api/analyses/{group_id}/markdown`) locate quotes too, so per-kind and whole Copy/Download carry `[mm:ss]`.
+- **locate details.** Normalise each segment separately and join with one space (equal to normalising the joined text,
+  checked against `eval/score.py`); skip segments whose normalised text is empty. Always located against the plain
+  segments of the transcript run, never labelled `Name:` lines; a labelled quote may be found (`verified`) yet have
+  no `at_ms` (caveat already listed).
+- **Retry only for failed.** `JobService.retry` accepts only `failed` jobs (`services/jobs.py:140`). Retry is shown for
+  a failed kind only; a cancelled kind shows its status and no Retry.

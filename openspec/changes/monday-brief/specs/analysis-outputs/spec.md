@@ -49,7 +49,7 @@ The system SHALL number decisions and disagreements in transcript order, ask the
 
 ### Requirement: Foreign-script check
 
-The system SHALL provide a prompt check `known_scripts` that rejects any model-written string outside `quote` containing letters that are not Greek or Latin, as a validation error naming the field.
+The system SHALL provide a prompt check `known_scripts` that reports any model-written string outside `quote`, `who` and `owner` containing letters that are not Greek or Latin, as a validation error naming the field, and SHALL store the brief with `script_warnings` when the error remains after the retry.
 
 #### Scenario: Bengali letters inside a Greek word
 
@@ -67,3 +67,20 @@ The system SHALL render the brief as sections Decided, Disagreed, To do, Open qu
 - **GIVEN** a stored brief with one final decision that replaces another and one open disagreement
 - **WHEN** its Markdown is requested
 - **THEN** it equals `tests/golden/brief.md`, with a `changed from:` line and `still open`
+
+#### Scenario: Warning after the retry
+
+- **GIVEN** a brief whose summary still contains Bengali letters after the retry
+- **WHEN** it is stored
+- **THEN** the output is kept with `script_warnings: ["summary"]`
+- **AND** the page shows a warning instead of hiding the brief
+
+### Requirement: The link call never hides the brief
+
+The system SHALL fold the link call into the brief's stored attempt, keep its prompt and reply in `params.link`, and SHALL let a cancel during the link call end the job without storing a brief.
+
+#### Scenario: Link call errors
+
+- **GIVEN** a valid extracted brief
+- **WHEN** the link call fails with an LM Studio error twice
+- **THEN** the brief is stored valid with `links: "failed"` and the Brief tab shows it

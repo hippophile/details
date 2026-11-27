@@ -61,3 +61,19 @@ Mixing two languages inside one 30 s window; German-specific models; translating
 - A window with Greek chat *and* German words is still decoded in one language: German inside Greek windows stays
   in Greek letters. This reduces whole-window errors, not word-level ones.
 - One extra language-detection pass per window (encoder only): small extra time, measured in the real run.
+
+## Corrections after the independent audit (2026-11-27)
+- **Run settings are frozen at start.** `also` and `switch_min_share` are stored in `stt_run.settings` by `start_run`;
+  the step reads them from there (same reason as `stt-clean-windows`: `spec.json` is rewritten on resume).
+- **The runs list stays small.** `LIST_COLS` has no `raw` (it holds every window's segments). The step also writes a
+  small `stt_run.settings.languages = {code: windows}` copy? No: settings are the request. Instead the list query adds
+  `raw->'languages' AS languages` (one JSON path, not the whole `raw`). `run_label` gains an optional `setting`
+  argument built from `settings.language` + `settings.also`; v1-import rows (no `settings.language`) show no language.
+- **Where the page gets the language list.** `/api/models?kind=stt` returns a flat list and a page test asserts that
+  URL, so it is not changed. New `GET /api/models?kind=stt_languages` → `{primary: ["el"], extra: ["en","de"]}`;
+  the 422 message lists the new kind.
+- **pickRun caveat, made a rule.** Preferring `accurate` alone would open an old, uncleaned large run over a newer
+  cleaned turbo run. Order: newest done non-preview run that is `accurate` **and** has `raw.cleaned`; else newest
+  that has `raw.cleaned`; else today's rule. The list query exposes `cleaned` as a boolean.
+- Confirmed feasible (audit read installed mlx-whisper): `model.detect_language(mel)` with `log_mel_spectrogram` +
+  `pad_or_trim(N_FRAMES)` and the dtype cast, as in `transcribe.py:150-175`.
