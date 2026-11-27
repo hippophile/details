@@ -12,10 +12,14 @@ GOLDEN = pathlib.Path(__file__).parent / "golden"
 def stored(kind):
     c = good(kind)
 
+    n = [60]
+
     def walk(o):
         if isinstance(o, dict):
             if "quote" in o:
                 o["verified"] = True
+                n[0] += 1
+                o["at_ms"] = n[0] * 1000
             for v in o.values():
                 walk(v)
         elif isinstance(o, list):
@@ -25,8 +29,10 @@ def stored(kind):
     if kind == "checklist":
         c["items"][0]["done"] = True
         c["items"][2]["verified"] = False
+        del c["items"][2]["at_ms"]
     if kind == "debrief":
         c["risks"][0]["verified"] = False
+        del c["risks"][0]["at_ms"]
     return c
 
 
@@ -53,3 +59,13 @@ def test_model_text_cannot_inject_headings_into_structure():
     c = stored("checklist")
     c["items"][0]["text"] = "line one\n# fake heading"
     assert "\n# fake heading" not in markdown.render_output("checklist", c)
+
+
+def test_quote_line_has_time_only_when_located_and_marker_replaces_unverified():
+    c = {"title": "T", "items": [{"text": "a", "done": False, "quote": "x\ny", "verified": True, "at_ms": 3723000},
+                                 {"text": "b", "done": False, "quote": "q", "verified": True},
+                                 {"text": "c", "done": False, "quote": "z", "verified": False},
+                                 {"text": "d", "done": False}]}
+    lines = markdown.render_output("checklist", c).splitlines()
+    assert lines[2:] == ["- [ ] a", "  > “x y” [1:02:03]", "- [ ] b", "  > “q”", "- [ ] c (quote not found)", "  > “z”",
+                         "- [ ] d"]

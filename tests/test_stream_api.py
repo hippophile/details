@@ -235,7 +235,7 @@ def test_page_has_the_live_box_ids_and_loads_stream_assets_in_order(mk_settings)
     html, = page_text(mk_settings, "/analyse")
     for i in ("liveBox", "liveHead", "liveText", "liveNote"):
         assert f'id="{i}"' in html, i
-    assert "draft, not yet checked" in html and "Gemma is writing" in html
+    assert "draft, not yet checked" in html and "The model is writing" in html
     assert "/analyse/stream.css" in html
     assert html.index("/analyse/api.js") < html.index("/analyse/stream.js") < html.index("/analyse/analyse.js")
     for old in ("progress", "stage", "pct", "elapsed", "cancel", "barfill", "stepTable", "logPanel"):

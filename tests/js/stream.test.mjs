@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { newState, apply, tokPerS, header, visible } = createRequire(import.meta.url)("../../web/analyse/stream.js");
+const { newState, apply, tokPerS, header, visible, liveTitle } = createRequire(import.meta.url)("../../web/analyse/stream.js");
 
 const run = (events) => events.reduce((s, [type, data, t]) => apply(s, type, data, t), newState());
 
@@ -70,4 +70,10 @@ test("a fallback event does not touch the text", () => {
   const s = run([["attempt_start", { kind: "tags", attempt: 1, chunk: null }, 0], ["fallback", { reason: "http 400" }, 5]]);
   assert.equal(s.text, "");
   assert.equal(s.fallback, "http 400");
+});
+
+test("live title names the model that is writing, generic until the label is known", () => {
+  assert.equal(liveTitle("Krikri 8B (Greek)"), "Krikri 8B (Greek) is writing");
+  assert.equal(liveTitle(""), "The model is writing");
+  assert.equal(liveTitle(undefined), "The model is writing");
 });

@@ -45,6 +45,8 @@ def test_js_wiring(mk_settings):
         assert needle in js, needle
     assert "innerHTML" not in js and not re.search(r"gemma", js + css, re.I)
     assert ".unverified" in css
+    for needle in ("seekTo", "quote-play", "/api/jobs/", "/retry"):
+        assert needle in js + css, needle
 
 
 def test_analyse_js_hooks_outputs(mk_settings):

@@ -39,8 +39,14 @@ Nothing unarchived. Implement after `stt-languages` only to avoid edit conflicts
    without outputs answers 409 with the group's error when it has one, else today's message.
 
 ## Edited (expected; re-measure at task 1)
-`llm/quotes.py`, `llm/markdown.py`, `api/analyses.py`, `web/analyse/{outputs.js,outputs.css,stream.js,index.html}`,
-`tests/golden/*.md`, tests named in tasks. Not edited: schemas, prompts, pipeline, DB.
+`llm/quotes.py`, `llm/markdown.py`, `api/analyses.py`, `services/comparison.py` (`_group` calls `_assemble`; it must pass
+the same recording-wide numbers or Compare labels would disagree with the page), `web/analyse/{outputs.js,outputs.css,
+stream.js,index.html}`, `tests/golden/*.md`, tests named in tasks plus `tests/test_stream_api.py` (asserted the title
+"Gemma is writing") and `tests/test_llm_page.py` (wiring needles). Re-measured (task 1.0): `render_output`/`render_group`
+are called only from `api/analyses.py` and `tests/test_llm_markdown.py`; `unverified` as user-facing text is in
+`llm/markdown.py` and `outputs.js` `itemMeta` (the live page `web/record/live.js` and `compare.js` keep their own wording,
+untouched); `Analysis #` is built in `_assemble` (+ `outputs.js` `groupLabel`, unchanged) and matched by
+`tests/test_prompt_ab_compare.py` (regex, still true). Not edited: schemas, prompts, pipeline, DB.
 
 ## Verification
 - Red first: `locate` unit tests (found, not found, case/accents, spans two segments, repeated quote → first

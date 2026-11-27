@@ -71,12 +71,13 @@ async def prune_orphans(conn, recording_id=None):
 # ---- sides --------------------------------------------------------------------------------------------------
 
 async def _group(pool, registry, stt_run_id, group_id):
-    from ..api.analyses import RUN_COLS, _assemble     # same grouping/retry/label rules as the analyses API
+    from ..api.analyses import RUN_COLS, _assemble, group_numbers     # same grouping/retry/label rules as the analyses API
     async with pool.connection() as c:
         cur = await c.execute(f"SELECT {RUN_COLS} FROM analysis_run a LEFT JOIN output o ON o.analysis_run_id=a.id "
                               "WHERE a.stt_run_id=%s ORDER BY a.created_at, a.id", (stt_run_id,))
         rows = await cur.fetchall()
-    return next((g for g in _assemble(rows, registry) if g["group_id"] == str(group_id)), None)
+        numbers = await group_numbers(c, stt_run_id)
+    return next((g for g in _assemble(rows, registry, numbers) if g["group_id"] == str(group_id)), None)
 
 
 async def _hash(pool, group_id):

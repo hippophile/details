@@ -1,4 +1,4 @@
-// llm-streaming: the "Gemma is writing" box on the Analyse page. Shows the raw reply of the analyse step as it is
+// llm-streaming: the "<model> is writing" box on the Analyse page. Shows the raw reply of the analyse step as it is
 // written (SSE /api/jobs/{id}/stream). It is an UNCHECKED draft: validation runs on the final text on the server.
 // Text is only ever set via textContent. Pure helpers are exported for `node --test` (tests/js/stream.test.mjs).
 (function () {
@@ -49,8 +49,9 @@
     return parts.join(" · ");
   }
   function visible(s) { return s.active || s.text.length > 0; }
+  function liveTitle(label) { return label ? `${label} is writing` : "The model is writing"; }
   function isNearBottom(e) { return e.scrollHeight - e.scrollTop - e.clientHeight < 24; }
-  const exported = { newState, apply, tokPerS, header, visible, isNearBottom };
+  const exported = { newState, apply, tokPerS, header, visible, liveTitle, isNearBottom };
   if (typeof module !== "undefined" && module.exports) { module.exports = exported; return; }
 
   // ---- page ---------------------------------------------------------------------------------------------
@@ -71,9 +72,10 @@
     if (near) pre.scrollTop = pre.scrollHeight;
   }
 
-  function attach(jobId) {
+  function attach(jobId, label) {
     detach();
     if (!window.EventSource || !$("liveBox")) return;
+    $("liveTitle").textContent = liveTitle(label);
     cur = { jobId, es: null, state: newState(), stick: true, unavailable: false, ended: false };
     const pre = $("liveText");
     pre.onscroll = () => { if (cur) cur.stick = isNearBottom(pre); };

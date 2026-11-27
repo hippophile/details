@@ -8,6 +8,7 @@ from details.app import create_app
 from fakes.lmstudio import FakeLMStudio, FakeMemInfo
 from jobs_helpers import wait_until
 from llm_helpers import SEGS, good, good_responder, seed_run, sync_prompts
+from stt_helpers import insert_run, insert_segments
 
 
 def api(db_url, mk_settings, body, fake=None, **env):
@@ -163,4 +164,65 @@ def test_markdown_endpoints_golden_headers_and_determinism(db, db_url, mk_settin
         assert (await c.get("/api/outputs/00000000-0000-0000-0000-000000000000/markdown")).status == 404
         assert (await c.get("/api/analyses/00000000-0000-0000-0000-000000000000/markdown")).status == 404
         assert (await c.get("/api/analyses/00000000-0000-0000-0000-000000000000")).status == 404
+    api(db_url, mk_settings, body)
+
+
+def test_get_group_adds_at_ms_to_found_quotes_only_and_list_has_no_content(db, db_url, mk_settings):
+    sync_prompts(db_url)
+    _, run_id = seed_run(db, mk_settings(db_url))
+
+    def responder(body):
+        c = good_responder(body)
+        if "items" in c:
+            c["items"][2]["quote"] = "Θα απολύσουμε τον Νίκο"
+        return c
+    fake = FakeLMStudio()
+    fake.responder = responder
+
+    async def body(c, s):
+        g = await finish(c, (await (await post(c, run_id)).json())["group_id"])
+        deb, ck = (k["output"]["content"] for k in g["kinds"])
+        assert deb["decisions"][0]["at_ms"] == 1000 and deb["risks"][0]["at_ms"] == 3000
+        assert [i.get("at_ms") for i in ck["items"]] == [1000, 2000, None]
+        assert ck["items"][2]["verified"] is False
+        lst = await (await c.get(f"/api/stt-runs/{run_id}/analyses")).json()
+        assert "kinds" not in lst[0]
+        text = await (await c.get(f"/api/analyses/{g['group_id']}/markdown")).text()
+        assert "  > “Θα κάνουμε deploy στις 12 Νοεμβρίου” [00:01]" in text and "quote not found" in text
+        oid = g["kinds"][1]["output"]["id"]
+        assert "[00:02]" in await (await c.get(f"/api/outputs/{oid}/markdown")).text()
+    api(db_url, mk_settings, body, fake)
+
+
+def test_numbers_are_per_recording_across_transcript_runs(db, db_url, mk_settings):
+    sync_prompts(db_url)
+    rid, run1 = seed_run(db, mk_settings(db_url))
+    run2 = insert_run(db, rid, status="done", language="el", text="x")
+    insert_segments(db, run2, 2)
+    _, other = seed_run(db, mk_settings(db_url))
+
+    async def body(c, s):
+        for rr in (run1, run2, other):
+            await finish(c, (await (await post(c, rr, kinds=["tags"])).json())["group_id"])
+        ls = [(await (await c.get(f"/api/stt-runs/{rr}/analyses")).json())[0] for rr in (run1, run2, other)]
+        assert [x["n"] for x in ls] == [1, 2, 1]
+        assert [x["label"].split(" · ")[0] for x in ls] == ["Analysis #1", "Analysis #2", "Analysis #1"]
+        g2 = await (await c.get(f"/api/analyses/{ls[1]['group_id']}")).json()
+        assert g2["n"] == 2 and g2["label"].startswith("Analysis #2")
+    api(db_url, mk_settings, body)
+
+
+def test_group_markdown_of_a_failed_analysis_is_409_with_the_error(db, db_url, mk_settings):
+    _, run_id = seed_run(db, mk_settings(db_url))
+    gids = {}
+    for st, err in (("failed", "needs ~17 GB, 13.3 GB free"), ("queued", None)):
+        gids[st] = db.execute("INSERT INTO analysis_run (group_id, stt_run_id, kind, model_id, status, error) "
+                              "VALUES (gen_random_uuid(), %s, 'tags', 'gemma-cheap', %s, %s) RETURNING group_id",
+                              (run_id, st, err)).fetchone()[0]
+
+    async def body(c, s):
+        r = await c.get(f"/api/analyses/{gids['failed']}/markdown")
+        assert r.status == 409 and (await r.json())["error"] == "needs ~17 GB, 13.3 GB free"
+        r = await c.get(f"/api/analyses/{gids['queued']}/markdown")
+        assert r.status == 404 and (await r.json())["error"] == "this analysis has no outputs yet"
     api(db_url, mk_settings, body)

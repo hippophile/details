@@ -37,3 +37,32 @@ def verify(content, full_text):
                 walk(v)
     walk(out)
     return out, counts[0], counts[1]
+
+
+def locate(content, segments):
+    """-> copy of content with `at_ms` (start of the segment where the quote begins) on every dict whose normalised quote
+    is found in `segments` [(start_ms, text)]. Each segment is normalised alone and joined by one space (= norm of the
+    joined text). A quote spanning segments resolves to the first; a repeated quote to its first occurrence."""
+    out = copy.deepcopy(content)
+    hay, starts, pos = [], [], 0
+    for ms, text in segments or ():
+        t = norm(text)
+        if t:
+            starts.append((pos, ms))
+            hay.append(t)
+            pos += len(t) + 1
+    hay = " ".join(hay)
+
+    def walk(node):
+        if isinstance(node, dict):
+            q = norm(node["quote"]) if isinstance(node.get("quote"), str) else ""
+            at = hay.find(q) if q else -1
+            if at >= 0:
+                node["at_ms"] = next(ms for p, ms in reversed(starts) if p <= at)
+            for v in list(node.values()):
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    walk(out)
+    return out

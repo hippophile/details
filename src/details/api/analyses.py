@@ -5,7 +5,7 @@ import datetime, uuid
 from aiohttp import web
 from psycopg.types.json import Jsonb
 
-from ..llm import markdown
+from ..llm import markdown, quotes
 from ..llm.prompts import latest_templates, versioned_templates
 from ..llm.schemas import KINDS
 from ..services import diarization, library
@@ -125,8 +125,23 @@ def _group_status(statuses):
     return "done"
 
 
-def _assemble(rows, registry):
-    """rows of ONE stt_run -> groups (oldest first), each with its kinds (last link of each retry chain)."""
+async def group_numbers(conn, stt_run_id):
+    """-> {group_id: n}: position among ALL analysis groups of the recording of this transcript run, oldest first."""
+    cur = await conn.execute("SELECT a.group_id FROM analysis_run a JOIN stt_run s ON s.id=a.stt_run_id WHERE s.recording_id="
+                             "(SELECT recording_id FROM stt_run WHERE id=%s) GROUP BY a.group_id "
+                             "ORDER BY min(a.created_at), a.group_id", (stt_run_id,))
+    return {r["group_id"]: n for n, r in enumerate(await cur.fetchall(), 1)}
+
+
+async def segments_of(conn, stt_run_id):
+    """-> [(start_ms, text)] of a transcript run, in order (plain text, never speaker-labelled lines)."""
+    cur = await conn.execute("SELECT start_ms, text FROM transcript_segment WHERE stt_run_id=%s ORDER BY idx", (stt_run_id,))
+    return [(r["start_ms"], r["text"]) for r in await cur.fetchall()]
+
+
+def _assemble(rows, registry, numbers=None):
+    """rows of ONE stt_run -> groups (oldest first), each with its kinds (last link of each retry chain).
+    numbers {group_id: n} (see group_numbers) replaces the position within these rows."""
     groups = {}
     for r in rows:
         groups.setdefault(r["group_id"], []).append(r)
@@ -173,6 +188,7 @@ def _assemble(rows, registry):
                     "error": next((k["error"] for k in kinds if k["error"] and k["status"] in ("failed", "cancelled")), None),
                     "kinds": kinds})
     for n, g in enumerate(out, 1):
+        n = numbers.get(uuid.UUID(g["group_id"]), n) if numbers else n
         g["n"] = n
         tail = fmt_wall(g["wall_ms"]) if g["status"] == "done" and g["wall_ms"] else g["status"]
         g["label"] = f"Analysis #{n} · {g['model_label']} · {tail}"
@@ -190,7 +206,7 @@ def add_analyses_routes(app, settings, pool_key, registry):
         async with pool(request).connection() as c:
             cur = await c.execute(f"SELECT {RUN_COLS} FROM analysis_run a LEFT JOIN output o ON o.analysis_run_id=a.id "
                                   "WHERE a.stt_run_id=%s ORDER BY a.created_at, a.id", (stt_run_id,))
-            return _assemble(await cur.fetchall(), registry)
+            return _assemble(await cur.fetchall(), registry, await group_numbers(c, stt_run_id))
 
     async def start(request):
         try:
@@ -227,9 +243,18 @@ def add_analyses_routes(app, settings, pool_key, registry):
             return None
         return next((g for g in await load_for_run(request, row["stt_run_id"]) if g["group_id"] == gid), None)
 
+    async def located(request, g):
+        """g with at_ms on every found quote in its outputs (one segments query per transcript run)."""
+        async with pool(request).connection() as c:
+            segs = await segments_of(c, g["stt_run_id"])
+        for k in g["kinds"]:
+            if k["output"]:
+                k["output"]["content"] = quotes.locate(k["output"]["content"], segs)
+        return g
+
     async def get_(request):
         g = await group_of(request)
-        return web.json_response(g) if g else err("analysis not found", 404)
+        return web.json_response(await located(request, g)) if g else err("analysis not found", 404)
 
     async def patch_item(request):
         try:
@@ -266,18 +291,22 @@ def add_analyses_routes(app, settings, pool_key, registry):
     async def output_md(request):
         oid = library.as_uuid(request.match_info["id"])
         async with pool(request).connection() as c:
-            row = await (await c.execute("SELECT o.kind, o.content, a.group_id FROM output o JOIN analysis_run a "
-                                         "ON a.id=o.analysis_run_id WHERE o.id=%s", (oid,))).fetchone() if oid else None
+            row = await (await c.execute("SELECT o.kind, o.content, a.group_id, a.stt_run_id FROM output o JOIN "
+                                         "analysis_run a ON a.id=o.analysis_run_id WHERE o.id=%s", (oid,))).fetchone() if oid else None
+            segs = await segments_of(c, row["stt_run_id"]) if row else []
         if row is None:
             return err("output not found", 404)
-        return md_response(request, markdown.render_output(row["kind"], row["content"]),
+        return md_response(request, markdown.render_output(row["kind"], quotes.locate(row["content"], segs)),
                            f"{row['kind']}-{str(row['group_id'])[:8]}.md")
 
     async def group_md(request):
         g = await group_of(request)
         outs = [(k["kind"], k["output"]["content"]) for k in (g["kinds"] if g else []) if k["output"]]
         if not outs:
+            if g and g["error"]:
+                return err(g["error"], 409)
             return err("analysis not found" if g is None else "this analysis has no outputs yet", 404)
+        outs = [(k["kind"], k["output"]["content"]) for k in (await located(request, g))["kinds"] if k["output"]]
         return md_response(request, markdown.render_group(outs), f"analysis-{g['group_id'][:8]}.md")
 
     app.router.add_post("/api/stt-runs/{id}/analyses", start)

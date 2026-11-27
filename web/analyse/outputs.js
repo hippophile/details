@@ -2,7 +2,7 @@
 // Text is only ever set via textContent. Pure helpers are exported for `node --test` (tests/js/outputs.test.mjs).
 (function () {
   const A = typeof module !== "undefined" && module.exports ? require("./api.js") : window.AnalyseApi;
-  const { api, el, fmtWall } = A;
+  const { api, el, fmtWall, fmtClock, seekTo, isActivateKey } = A;
 
   // ---- pure helpers -------------------------------------------------------------------------------------
   function canStart(s) { return !!(s.model && s.kinds.length && s.run && !s.busy); }
@@ -15,9 +15,19 @@
     if (it.owner) parts.push("owner: " + it.owner);
     if (it.due) parts.push("due: " + it.due);
     if (it.severity) parts.push("severity: " + it.severity);
-    if (it.verified === false) parts.push("unverified");
+    if (it.verified === false) parts.push("quote not found");
     return parts.join(" · ");
   }
+  // A quote with at_ms plays the recording from there; without it, plain text.
+  function quoteLabel(it) { return (typeof it.at_ms === "number" ? `▶ ${fmtClock(it.at_ms)} ` : "") + "“" + it.quote + "”"; }
+  function countsLine(kd) {
+    const v = kd.verified || 0, u = kd.unverified || 0;
+    if (!v && !u) return "";
+    return `${v} ${v === 1 ? "quote" : "quotes"} found in the transcript, ${u} not found${u ? " (greyed out)" : ""}. ` +
+      "Found means the words were said, not that the point is right.";
+  }
+  // job to retry for a kind: only a failed one (the job runner refuses the rest)
+  function retryJob(kd, g) { return kd && kd.status === "failed" && g && g.job_id ? g.job_id : null; }
   function groupLabel(g) { return `Analysis #${g.n} · ${g.model_label} · ${g.wall_ms ? fmtWall(g.wall_ms) : g.status}`; }
   function footer(g) {
     const tps = g.tok_per_s ? ` · ${g.tok_per_s} tok/s` : "";
@@ -33,7 +43,7 @@
   function promptsText(prompts, versions) {
     return Object.keys(prompts || {}).filter((k) => (versions[k] || []).length > 1).map((k) => `${k} v${prompts[k]}`).join(", ");
   }
-  const exported = { canStart, modelLabel, itemMeta, footer, groupLabel, pickerKinds, promptVersionsBody, promptsText };
+  const exported = { canStart, modelLabel, itemMeta, footer, groupLabel, pickerKinds, promptVersionsBody, promptsText, quoteLabel, countsLine, retryJob };
   if (typeof module !== "undefined" && module.exports) { module.exports = exported; return; }
 
   // ---- page ---------------------------------------------------------------------------------------------
@@ -111,7 +121,7 @@
     let groups = [];
     try { groups = await api(`/api/stt-runs/${source}/analyses`); } catch (e) { return; }
     const live = groups.find((g) => g.status === "queued" || g.status === "running");
-    if (live && live.job_id) watch(live.job_id, live.group_id);
+    if (live && live.job_id) watch(live.job_id, live.group_id, live.model_label);
     else if (!shown && groups.length) show(groups[0].group_id);
   }
 
@@ -146,10 +156,10 @@
           prompt_versions: promptVersionsBody(versions, picks(), kindsOn()),
           diarization_run_id: window.Speakers ? window.Speakers.labelRunId() : undefined }) });
       msg("");
-      watch(r.job_id, r.group_id);
+      watch(r.job_id, r.group_id, (models.find((m) => m.id === model) || {}).label);
     } catch (e) { msg("Could not start: " + e.message, true); syncStart(); }
   }
-  function watch(jobId, groupId) {
+  function watch(jobId, groupId, label) {
     if (watching && watching.id === jobId) return;
     stopWatch();
     const poll = async () => {
@@ -166,7 +176,7 @@
     };
     watching = { id: jobId, timer: setInterval(poll, 1500) };
     if (window.Insights) window.Insights.attach($("aiInsightsHost"), jobId);
-    if (window.LiveStream) window.LiveStream.attach(jobId);
+    if (window.LiveStream) window.LiveStream.attach(jobId, label);
     $("aiCancel").hidden = false;
     syncStart();
     poll();
@@ -199,7 +209,7 @@
       tabs.appendChild(t);
     }
     const kd = g.kinds.find((x) => x.kind === tab);
-    renderKind($("aiPanel"), kd);
+    renderKind($("aiPanel"), kd, g);
     const out = kd && kd.output;
     $("aiCopy").disabled = $("aiDownload").disabled = !out;
     $("aiCopy").onclick = () => copyMd(`/api/outputs/${out.id}/markdown`);
@@ -215,10 +225,23 @@
     $("aiLog").onclick = () => window.Insights && window.Insights.attach($("aiInsightsHost"), g.job_id, { finished: !["queued", "running"].includes(g.status) });
   }
 
-  function renderKind(panel, kd) {
+  function renderKind(panel, kd, g) {
     panel.replaceChildren();
     if (!kd) return;
-    if (kd.status === "failed" || kd.status === "cancelled") { panel.appendChild(el("div", { className: "bad-note" }, `${kd.status}: ${kd.error || ""}`)); return; }
+    if (kd.status === "failed" || kd.status === "cancelled") {
+      panel.appendChild(el("div", { className: "bad-note" }, `${kd.status}: ${kd.error || ""}`));
+      const job = retryJob(kd, g);
+      if (job) {
+        const b = el("button", { type: "button", className: "btn sm" }, "Retry");
+        b.onclick = async () => {
+          b.disabled = true;
+          try { await api(`/api/jobs/${job}/retry`, { method: "POST" }); msg(""); watch(job, g.group_id, g.model_label); }
+          catch (e) { b.disabled = false; msg("Retry failed: " + e.message, true); }
+        };
+        panel.appendChild(b);
+      }
+      return;
+    }
     if (kd.status !== "done") { panel.appendChild(el("div", { className: "meta" }, "Working on it...")); return; }
     if (kd.schema_valid === false || !kd.output) {
       panel.appendChild(el("div", { className: "bad-note" }, "model returned invalid JSON"));
@@ -227,7 +250,7 @@
       return;
     }
     const c = kd.output.content;
-    if (kd.unverified) panel.appendChild(el("div", { className: "meta" }, `${kd.verified} quotes verified, ${kd.unverified} unverified (greyed out).`));
+    if (countsLine(kd)) panel.appendChild(el("div", { className: "meta" }, countsLine(kd)));
     if (kd.kind === "checklist") { panel.appendChild(el("h3", null, c.title)); panel.appendChild(checklist(kd.output.id, c.items)); }
     else if (kd.kind === "tags") panel.appendChild(tagPills(c.tags));
     else if (kd.kind === "notes") {
@@ -245,13 +268,30 @@
     li.appendChild(el("span", null, it.text));
     const meta = itemMeta(it);
     if (meta) li.appendChild(el("span", { className: "meta" }, "  " + meta));
-    if (it.quote) li.appendChild(el("div", { className: "quote" }, "“" + it.quote + "”"));
+    if (it.quote) li.appendChild(quoteNode(it));
     return li;
+  }
+  function quoteNode(it) {
+    if (typeof it.at_ms !== "number") return el("div", { className: "quote" }, quoteLabel(it));
+    const b = el("button", { type: "button", className: "quote quote-play", title: "Play the recording from here" }, quoteLabel(it));
+    b.onclick = () => seekTo($("player"), it.at_ms);
+    return b;
   }
   function bullets(items) { const ul = el("ul"); for (const it of items) ul.appendChild(itemNode(it)); return ul; }
   function tagPills(tags) {
     const ul = el("ul", { className: "tagpills" });
-    for (const t of tags) ul.appendChild(el("li", { className: "tagpill" + (t.verified === false ? " unverified" : ""), title: t.quote || "" }, t.name));
+    for (const t of tags) {
+      const li = el("li", { className: "tagpill" + (t.verified === false ? " unverified" : ""), title: t.quote || "" }, t.name);
+      if (typeof t.at_ms === "number") {
+        li.classList.add("seek");
+        li.tabIndex = 0;
+        li.setAttribute("role", "button");
+        li.title = `${t.quote || ""} (play from ${fmtClock(t.at_ms)})`;
+        li.onclick = () => seekTo($("player"), t.at_ms);
+        li.onkeydown = (ev) => { if (isActivateKey(ev)) { ev.preventDefault(); seekTo($("player"), t.at_ms); } };
+      }
+      ul.appendChild(li);
+    }
     return ul;
   }
   function checklist(outputId, items) {
@@ -271,7 +311,7 @@
       li.append(box, lab);
       const meta = itemMeta(it);
       if (meta) li.appendChild(el("span", { className: "meta" }, meta));
-      if (it.quote) li.appendChild(el("div", { className: "quote" }, "“" + it.quote + "”"));
+      if (it.quote) li.appendChild(quoteNode(it));
       ul.appendChild(li);
     });
     return ul;

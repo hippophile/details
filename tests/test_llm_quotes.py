@@ -44,3 +44,37 @@ def test_nested_sections_and_prose_fields_are_handled():
     out, v, u = quotes.verify(c, FULL)
     assert out["sections"][0]["bullets"][0]["verified"] is True and "verified" not in out["sections"][0]
     assert (v, u) == (1, 0)
+
+
+SEGS = [(0, "Καλημέρα σε όλους."), (5000, "Θα κάνουμε deploy"), (9000, "..."), (12000, "στις 12 Νοεμβρίου. Ωραία!"),
+        (20000, "Ωραία! Τέλος.")]
+
+
+def test_locate_sets_at_ms_to_the_start_of_the_segment_where_the_quote_begins():
+    c = {"decisions": [item("ΚΑΛΗΜΕΡΑ σε ολουσ"), item("deploy στις 12 νοεμβριου")], "nested": {"b": [item("τελοσ")]}}
+    out = quotes.locate(c, SEGS)
+    assert [i["at_ms"] for i in out["decisions"]] == [0, 5000]              # case / tonos / sigma; spans two -> first
+    assert out["nested"]["b"][0]["at_ms"] == 20000
+
+
+def test_locate_not_found_empty_or_non_string_quote_gets_no_at_ms_and_input_is_not_mutated():
+    c = {"items": [item("Θα απολύσουμε τον Νίκο"), item(""), {"text": "t", "quote": None}, {"text": "no quote"}]}
+    out = quotes.locate(c, SEGS)
+    assert all("at_ms" not in i for i in out["items"])
+    c2 = {"items": [item("deploy")]}
+    quotes.locate(c2, SEGS)
+    assert "at_ms" not in c2["items"][0]
+
+
+def test_locate_repeated_quote_resolves_to_the_first_occurrence():
+    assert quotes.locate({"x": [item("Ωραία")]}, SEGS)["x"][0]["at_ms"] == 12000
+
+
+def test_locate_skips_segments_that_normalise_to_nothing_and_keeps_other_fields():
+    out = quotes.locate({"x": [{"text": "t", "quote": "deploy στις", "verified": True}]}, SEGS)
+    assert out["x"][0] == {"text": "t", "quote": "deploy στις", "verified": True, "at_ms": 5000}
+
+
+def test_locate_without_segments_adds_nothing():
+    assert quotes.locate({"x": [item("deploy")]}, []) == {"x": [item("deploy")]}
+    assert quotes.locate({"x": [item("deploy")]}, None) == {"x": [item("deploy")]}

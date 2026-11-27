@@ -1,5 +1,6 @@
 """Markdown rendered from stored JSON only (deterministic; never parsed from model text). Checklist state is read at
-render time: `- [x]` / `- [ ]`. Item text is collapsed to one line so model text cannot add structure."""
+render time: `- [x]` / `- [ ]`. Item text is collapsed to one line so model text cannot add structure.
+An item with a quote is followed by `  > “quote” [mm:ss]` (time only when the content was located: quotes.locate)."""
 from .schemas import KINDS
 
 
@@ -10,16 +11,29 @@ def _one(s):
 def _meta(item, *keys):
     parts = [f"{k}: {_one(item[k])}" for k in keys if item.get(k)]
     if item.get("verified") is False:
-        parts.append("unverified")
+        parts.append("quote not found")
     return f" ({', '.join(parts)})" if parts else ""
 
 
+def _clock(ms):
+    s = int(ms) // 1000
+    return f"{s // 3600}:{s % 3600 // 60:02}:{s % 60:02}" if s >= 3600 else f"{s // 60:02}:{s % 60:02}"
+
+
+def _with_quote(line, item):
+    if not item.get("quote"):
+        return [line]
+    at = f" [{_clock(item['at_ms'])}]" if isinstance(item.get("at_ms"), (int, float)) else ""
+    return [line, f"  > “{_one(item['quote'])}”{at}"]
+
+
 def _bullets(items, *keys):
-    return [f"- {_one(i['text'])}{_meta(i, *keys)}" for i in items]
+    return [x for i in items for x in _with_quote(f"- {_one(i['text'])}{_meta(i, *keys)}", i)]
 
 
 def _tasks(items):
-    return [f"- [{'x' if i.get('done') else ' '}] {_one(i['text'])}{_meta(i, 'owner', 'due')}" for i in items]
+    return [x for i in items for x in _with_quote(
+        f"- [{'x' if i.get('done') else ' '}] {_one(i['text'])}{_meta(i, 'owner', 'due')}", i)]
 
 
 def _section(heading, lines):
@@ -40,7 +54,7 @@ def render_output(kind, c):
         for s in c["sections"]:
             lines += _section(_one(s["heading"]), _bullets(s["bullets"]))
     elif kind == "tags":
-        lines = ["# Tags", ""] + [f"- {_one(t['name'])}" for t in c["tags"]]
+        lines = ["# Tags", ""] + [x for t in c["tags"] for x in _with_quote(f"- {_one(t['name'])}{_meta(t)}", t)]
     else:
         raise ValueError(f"unknown kind '{kind}'")
     return "\n".join(lines) + "\n"
