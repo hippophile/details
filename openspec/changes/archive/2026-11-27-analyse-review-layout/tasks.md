@@ -13,7 +13,7 @@
 - [x] 2.4 `make test` once.
 
 ## 3. Prove on real data
-- [ ] 3.1 Screenshots as in Verification (needs the app restarted on this code).
+- [x] 3.1 Screenshots as in Verification (needs the app restarted on this code). — done 2026-11-27: write-up first, paragraph view; found 4 follow-ups, fixed in 3b
 
 ## 3b. Follow-ups from the browser check
 - [x] 3b.1 Red tests: char loop collapsed (and 7 repeats kept); CSS rule present; chapter list unbulleted; static
@@ -21,4 +21,4 @@
 - [x] 3b.2 Implement; `make test` once.
 
 ## 4. Close
-- [ ] 4.1 validate, tick, archive, commit.
+- [x] 4.1 validate, tick, archive, commit.

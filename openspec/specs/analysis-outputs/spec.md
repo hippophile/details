@@ -220,3 +220,156 @@ The system SHALL add to the Analyse page an AI model dropdown filled from `/api/
 - **GIVEN** a kind with `schema_valid=false`
 - **WHEN** its tab is opened
 - **THEN** the raw model text and a red note "model returned invalid JSON" are shown
+
+### Requirement: Quotes are located in the audio
+
+The system SHALL add `at_ms` at read time to every write-up item whose quote is found in the transcript segments, equal to the start of the segment where the normalised quote begins, and the Analyse page SHALL play the recording from `at_ms` when that quote is activated.
+
+#### Scenario: Quote jumps to its moment
+
+- **GIVEN** a decision whose quote lies in the segment starting at 161000 ms
+- **WHEN** `GET /api/analyses/{group_id}` is requested
+- **THEN** the item has `at_ms` 161000
+- **AND** activating the quote on the page sets the player to 2:41 and plays
+
+#### Scenario: Quote not in the transcript
+
+- **GIVEN** an item with `verified: false`
+- **WHEN** the analysis is requested
+- **THEN** the item has no `at_ms` and its quote is shown as plain greyed text
+
+### Requirement: Quote counts are always shown and honestly worded
+
+The system SHALL show, for every write-up kind that has quotes, how many quotes were found in the transcript and how many were not, and SHALL state that a found quote proves the words were said and not that the point is right.
+
+#### Scenario: All quotes found
+
+- **GIVEN** a debrief with 9 quotes, all found
+- **WHEN** its tab is opened
+- **THEN** the line "9 quotes found in the transcript, 0 not found" is visible
+
+### Requirement: Markdown keeps the evidence
+
+The system SHALL render, after each Markdown item that has a quote, an indented line with the quote and, when located, its `[mm:ss]` time, and SHALL mark an item whose quote was not found with `quote not found`.
+
+#### Scenario: Exported decision
+
+- **GIVEN** a stored decision with a located quote
+- **WHEN** its Markdown is requested
+- **THEN** the item is followed by a line starting with `  > ` containing the quote and `[02:41]`
+
+### Requirement: Analysis numbers are unique per recording
+
+The system SHALL number analysis groups by their position among all analysis groups of the recording, oldest first.
+
+#### Scenario: Two transcript runs
+
+- **GIVEN** one analysis on transcript run #1 and a later one on transcript run #3
+- **WHEN** both lists are requested
+- **THEN** the labels start with `Analysis #1` and `Analysis #2`
+
+### Requirement: Failed write-ups can be retried from the Write-up card
+
+The system SHALL show the stored error for a failed or cancelled write-up kind and a Retry control for a failed one, and `GET /api/analyses/{group_id}/markdown` SHALL answer 409 with that error when the group has no outputs because it failed.
+
+#### Scenario: Out of memory
+
+- **GIVEN** an analysis that failed with "needs ~17 GB, 13.3 GB free"
+- **WHEN** its tab is opened
+- **THEN** that text and a Retry button are shown
+- **AND** pressing Retry POSTs to `/api/jobs/{job_id}/retry`
+
+### Requirement: The live box names the model that is writing
+
+The system SHALL title the live reply box with the label of the model of the analysis being watched.
+
+#### Scenario: Krikri is running
+
+- **GIVEN** an analysis running on "Krikri 8B (Greek)"
+- **WHEN** the live box is visible
+- **THEN** its title is "Krikri 8B (Greek) is writing"
+
+### Requirement: Brief output kind
+
+The system SHALL offer an output kind `brief` with schema `schemas/brief.v1.json`, containing `kind_of_recording`, `summary`, `chapters`, `decisions`, `disagreements` with two or more positions each, `action_items` and `open_questions`, each item with a verbatim `quote`, and SHALL list it first among the kinds.
+
+#### Scenario: A lesson has no decisions
+
+- **GIVEN** a transcript of two people practising German verb forms
+- **WHEN** the model returns `kind_of_recording: "lesson"` with empty `decisions`, `disagreements` and `action_items`
+- **THEN** the output is valid and stored
+- **AND** the page shows "Nothing was decided."
+
+#### Scenario: Position without a second side
+
+- **GIVEN** a disagreement with one position
+- **WHEN** it is validated
+- **THEN** it fails
+
+### Requirement: Final decisions are linked by the model and assembled by code
+
+The system SHALL number decisions and disagreements in transcript order, ask the model only which decision replaces which earlier decisions and which decision settles which disagreement, validate that reply against the numbered items, and write `status`, `replaces`, `replaced_by` and `settled_by` in code without changing any item's text.
+
+#### Scenario: A later decision replaces an earlier one
+
+- **GIVEN** decisions d1 "ship to all branches" at 0:35 and d2 "ship to 2 branches first" at 2:41
+- **WHEN** the link reply is `{"decisions":[{"id":"d2","replaces":["d1"]}],"disagreements":[]}`
+- **THEN** d2 is stored `final` with `replaces: ["d1"]` and d1 is stored `replaced` with `replaced_by: "d2"`
+- **AND** the page shows d1 under d2 as "changed from"
+
+#### Scenario: Link reply points forward
+
+- **GIVEN** the same decisions
+- **WHEN** the link reply says d1 replaces d2
+- **THEN** it is a validation error and the call is retried once with that error
+
+#### Scenario: Link fails twice
+
+- **GIVEN** a brief with three decisions
+- **WHEN** the link reply is invalid after its retry
+- **THEN** the brief is stored with every decision `final`, no links and `links: "failed"`
+- **AND** the page says the replaced decisions could not be worked out
+
+#### Scenario: Long meeting
+
+- **GIVEN** a transcript processed in three chunks, with a decision in chunk 1 and its change in chunk 3
+- **WHEN** the brief is generated
+- **THEN** the link step runs once on the merged decisions and marks the chunk-1 decision `replaced`
+
+### Requirement: Foreign-script check
+
+The system SHALL provide a prompt check `known_scripts` that reports any model-written string outside `quote`, `who` and `owner` containing letters that are not Greek or Latin, as a validation error naming the field, and SHALL store the brief with `script_warnings` when the error remains after the retry.
+
+#### Scenario: Bengali letters inside a Greek word
+
+- **GIVEN** a brief whose summary contains "ορθোগ্রাফία"
+- **WHEN** the check runs
+- **THEN** it returns an error for `summary`
+- **AND** a quote containing the same text is not an error
+
+### Requirement: Brief Markdown and page
+
+The system SHALL render the brief as sections Decided, Disagreed, To do, Open questions and Chapters, showing replaced decisions under their replacement, each disagreement as still open or settled by a named decision, and an explicit empty line for each empty section.
+
+#### Scenario: Exported brief
+
+- **GIVEN** a stored brief with one final decision that replaces another and one open disagreement
+- **WHEN** its Markdown is requested
+- **THEN** it equals `tests/golden/brief.md`, with a `changed from:` line and `still open`
+
+#### Scenario: Warning after the retry
+
+- **GIVEN** a brief whose summary still contains Bengali letters after the retry
+- **WHEN** it is stored
+- **THEN** the output is kept with `script_warnings: ["summary"]`
+- **AND** the page shows a warning instead of hiding the brief
+
+### Requirement: The link call never hides the brief
+
+The system SHALL fold the link call into the brief's stored attempt, keep its prompt and reply in `params.link`, and SHALL let a cancel during the link call end the job without storing a brief.
+
+#### Scenario: Link call errors
+
+- **GIVEN** a valid extracted brief
+- **WHEN** the link call fails with an LM Studio error twice
+- **THEN** the brief is stored valid with `links: "failed"` and the Brief tab shows it

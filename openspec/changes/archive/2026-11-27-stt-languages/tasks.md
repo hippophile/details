@@ -23,4 +23,4 @@
 - [x] 3.1 Real run as in Verification; table of windows (language, shares) in the proposal; listening notes.
 
 ## 4. Close
-- [ ] 4.1 validate, tick, archive, commit.
+- [x] 4.1 validate, tick, archive, commit.

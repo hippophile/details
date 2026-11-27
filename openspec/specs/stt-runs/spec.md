@@ -199,3 +199,100 @@ The system SHALL render a run's segments as `[mm:ss] text` rows and SHALL set th
 - **GIVEN** the transcript is rendered
 - **WHEN** the user tabs to a row and presses Enter
 - **THEN** the player seeks to that row's time
+
+### Requirement: Transcript cleaning before storage
+
+The system SHALL clean a finished run's segments before storing them: drop segments containing a known Whisper junk phrase, collapse repeat loops, cap end times at the audio length, order segments and trim overlaps, and store the counts of each fix in `stt_run.raw["cleaned"]`.
+
+#### Scenario: Junk phrase is removed
+
+- **GIVEN** a window returns the segment "Υπότιτλοι AUTHORWAVE"
+- **WHEN** the run is stored
+- **THEN** no stored segment contains that text
+- **AND** `raw.cleaned.junk` is 1
+
+#### Scenario: Repeat loop is collapsed, real repetition is kept
+
+- **GIVEN** one segment repeats "Αφικού" 50 times and another segment is "Gehelfen Gehelfen"
+- **WHEN** the run is stored
+- **THEN** the first segment holds "Αφικού" once
+- **AND** the second segment is stored unchanged
+
+#### Scenario: Times stay inside the audio and in order
+
+- **GIVEN** a 919.8 s recording, a segment ending at 929.98 s, and a segment starting before the previous one ends
+- **WHEN** the run is stored
+- **THEN** no segment ends after 919.8 s
+- **AND** every segment starts at or after the previous segment's end
+
+### Requirement: Overlapping transcription windows
+
+The system SHALL store `overlap_s` (from `[stt] overlap_s`) in the run settings when a run starts, and SHALL decode each window with that many seconds of extra audio on each side (clipped to the recording) and keep only the segments whose midpoint lies inside the window's own range, so a segment at a join is stored exactly once.
+
+#### Scenario: Segment at a join is stored once
+
+- **GIVEN** `window_s = 30` and `overlap_s = 3`
+- **WHEN** window 1 is transcribed
+- **THEN** the engine is asked for 27 s to 63 s
+- **AND** a segment from 28 s to 31 s (midpoint 29.5 s) is stored by window 0 only
+
+#### Scenario: Old run resumes unchanged
+
+- **GIVEN** a run whose stored settings have no `overlap_s`
+- **WHEN** it resumes
+- **THEN** windows are decoded without overlap, as before
+
+### Requirement: Extra spoken languages per run
+
+The system SHALL accept an optional `also` list of language codes on `POST /api/recordings/{id}/stt-runs`, validate it against `[stt] extra_languages`, store it in the run settings, and decode each window in the primary language unless one of the extra languages holds at least `[stt] switch_min_share` of the probability among the allowed languages.
+
+#### Scenario: Window stays in the primary language
+
+- **GIVEN** a run with `language: "el"`, `also: ["en","de"]` and `switch_min_share` 0.7
+- **WHEN** a window's shares are el 0.35, en 0.60, de 0.05
+- **THEN** the window is decoded in `el`
+- **AND** the window record stores `language: "el"` and the three shares
+
+#### Scenario: Window switches
+
+- **GIVEN** the same run
+- **WHEN** a window's shares are el 0.10, en 0.05, de 0.85
+- **THEN** the window is decoded in `de`
+
+#### Scenario: Bad request
+
+- **GIVEN** `extra_languages = "en,de"`
+- **WHEN** the client POSTs `also: ["is"]`, or `also` together with `language: "auto"`
+- **THEN** the response is 422 with a message naming the problem
+
+### Requirement: Run language is stored and labelled as requested
+
+The system SHALL store, for an Auto run, the language of the most windows and the per-language window counts in `raw.languages`, and SHALL include the requested language setting in every run label.
+
+#### Scenario: Auto run is labelled Auto
+
+- **GIVEN** a done Auto run whose windows were 18 `el` and 13 `en`
+- **WHEN** the runs list is requested
+- **THEN** its `language` is `el`, its `languages` is `{"el": 18, "en": 13}` and its label contains `Auto`
+
+#### Scenario: Two settings, two labels
+
+- **GIVEN** two done runs of the same model, one `el`, one `el` with `also: ["de"]`
+- **WHEN** the runs list is requested
+- **THEN** the labels differ: one contains `Ελληνικά`, the other `Ελληνικά + de`
+
+### Requirement: Analyse opens on the accurate run
+
+The system SHALL return `model_role` and `cleaned` on each run, and the Analyse page SHALL open the newest done, non-live-preview run that is `accurate` and cleaned, else the newest cleaned run, else the first done run.
+
+#### Scenario: Accurate run preferred
+
+- **GIVEN** a newer done cleaned `fast` run and an older done cleaned `accurate` run
+- **WHEN** the Analyse page loads
+- **THEN** the `accurate` run is selected
+
+#### Scenario: Old uncleaned accurate run is not preferred
+
+- **GIVEN** an older done `accurate` run without cleaning and a newer done cleaned `fast` run
+- **WHEN** the Analyse page loads
+- **THEN** the cleaned `fast` run is selected

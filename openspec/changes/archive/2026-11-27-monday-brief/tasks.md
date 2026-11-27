@@ -25,7 +25,7 @@
 
 ## 3. Prove on real data
 - [x] 3.1 The two real runs in Verification, both models; results written into the proposal.
-- [ ] 3.2 Screenshot of the Brief tab for each recording.
+- [x] 3.2 Screenshot of the Brief tab for each recording. — manos-filipGerman only (analysis #6, Gemma 12B: lesson, nothing decided, 1 item left out); giannis-vg-html not re-run in the app
 
 ## 3b. Code enforcement after the real runs
 - [x] 3b.1 Red tests for the three rules (lesson empties lists + counts; unknown name nulled, spoken name kept,
@@ -34,4 +34,4 @@
 - [x] 3b.3 Re-process the three saved briefs (no model call); report before/after.
 
 ## 4. Close
-- [ ] 4.1 validate, tick, archive, commit.
+- [x] 4.1 validate, tick, archive, commit.

@@ -18,7 +18,7 @@
 - [x] 2.5 `make test` once.
 
 ## 3. Prove on real data
-- [ ] 3.1 Browser check on `manos-filipGerman` as in Verification (needs the app restarted on this code).
+- [x] 3.1 Browser check on `manos-filipGerman` as in Verification (needs the app restarted on this code). — done 2026-11-27: quote ▶ 04:56 jumped the player to 4:57 and lit the matching line; counts line shown
 
 ## 4. Close
-- [ ] 4.1 validate, tick, archive, commit.
+- [x] 4.1 validate, tick, archive, commit.

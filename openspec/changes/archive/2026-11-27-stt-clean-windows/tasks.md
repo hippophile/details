@@ -21,7 +21,7 @@
 ## 3. Prove on real data
 - [x] 3.1 Re-run `manos-filipGerman` (turbo, auto). Report before/after counts and wall time (measured).
 - [x] 3.2 List every dropped line of that run and read it; note any real speech lost in this proposal.
-- [ ] 3.3 Screenshot the Analyse transcript of the new run around 00:28 and 02:58 (junk + loop spots).
+- [x] 3.3 Screenshot the Analyse transcript of the new run around 00:28 and 02:58 (junk + loop spots). — done in the app 2026-11-27 on run #4 (large): 00:28 junk gone; 03:24 char loop found and fixed in a follow-up (analyse-review-layout 3b)
 
 ## 3b. Correction after the real run
 - [x] 3b.1 Red tests: join duplicate dropped (contained text, opposite sides of a join), paraphrase kept, same-side
@@ -31,4 +31,4 @@
       line dropped by the new rule and read it.
 
 ## 4. Close
-- [ ] 4.1 `openspec validate stt-clean-windows`, tick tasks, archive, commit.
+- [x] 4.1 `openspec validate stt-clean-windows`, tick tasks, archive, commit.

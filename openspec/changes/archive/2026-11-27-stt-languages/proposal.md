@@ -152,3 +152,5 @@ Candidate rule (not implemented): stay in the primary unless its share is ≤ 0.
 On this run it moves window 20 to `de`, keeps 3/24/28 in Greek, and still sends 21 to `en`.
 Decision waits for the owner to listen to windows 3 (1:30), 20 (10:00), 21 (10:30), 24 (12:00), 28 (14:00).
 Until then the archive (task 4.1) stays open; the mechanism, storage, labels and page are done and tested.
+
+**Closed 2026-11-27:** the owner chose to skip the listening check. `switch_min_share` stays 0.7; the ≤0.10 rule above is a candidate for a later change. Known effect: German drill windows on these voices can still come out in Greek letters.
